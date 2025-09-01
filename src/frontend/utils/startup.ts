@@ -5,7 +5,6 @@ import { checkStartupActions } from "../components/actions/actions"
 import { getTimeFromInterval } from "../components/helpers/time"
 import { requestMainMultiple, sendMain, sendMainMultiple } from "../IPC/main"
 import { activePopup, alertMessage, chumsSyncCategories, currentWindow, dataPath, deviceId, isDev, language, loaded, loadedState, os, scriptures, shows, showsPath, special, tempPath, version, windowState } from "../stores"
-import { startTracking } from "./analytics"
 import { wait } from "./common"
 import { setLanguage } from "./language"
 import { storeSubscriber } from "./listeners"
@@ -52,7 +51,6 @@ async function startupMain() {
     remoteListen()
     checkStartupActions()
     autoBackup()
-    startTracking()
     connect()
 
     // custom alert

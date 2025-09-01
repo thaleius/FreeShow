@@ -27,7 +27,6 @@ import {
     overlayTimers,
     playingVideos,
     projects,
-    scriptures,
     serverData,
     showsCache,
     special,
@@ -39,7 +38,6 @@ import {
     transitionData,
     usageLog
 } from "../../stores"
-import { trackScriptureUsage } from "../../utils/analytics"
 import { newToast } from "../../utils/common"
 import { send } from "../../utils/request"
 import { sendBackgroundToStage } from "../../utils/stageTalk"
@@ -82,21 +80,11 @@ let resetActionTrigger = false
 export function setOutput(type: string, data: any, toggle = false, outputId = "", add = false) {
     const ref = data?.layout ? _show(data.id).layouts([data.layout]).ref()[0] || [] : []
 
-    // track usage (& set attributionString)
+    // & set attributionString
     if (type === "slide" && data?.id) {
         const showReference = _show(data.id).get("reference")
         if (showReference?.type === "scripture") {
             const translation = showReference.data
-            const slide = _show(data.id).get("slides")[ref[data.index]?.id]
-
-            const scripture = get(scriptures)[translation.collection] || {}
-            const versions = scripture.collection?.versions || [scripture.id || ""]
-            versions.forEach((id) => {
-                const name = get(scriptures)[id]?.name || translation.version || ""
-                const scriptureId = get(scriptures)[id]?.id || id
-                const apiId = translation.api ? scriptureId : null
-                if (name || apiId) trackScriptureUsage(name, apiId, slide.group)
-            })
 
             // set attributionString
             if (translation.attributionString) data.attributionString = translation.attributionString

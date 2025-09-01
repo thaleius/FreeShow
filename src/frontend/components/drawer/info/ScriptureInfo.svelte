@@ -19,12 +19,10 @@
         playScripture,
         popupData,
         scriptureHistory,
-        scriptures,
         scriptureSettings,
         styles,
         templates
     } from "../../../stores"
-    import { trackScriptureUsage } from "../../../utils/analytics"
     import { customActionActivation } from "../../actions/actions"
     import Icon from "../../helpers/Icon.svelte"
     import T from "../../helpers/T.svelte"
@@ -237,13 +235,6 @@
         let tempItems: Item[] = slides[0] || []
         setOutput("slide", { id: "temp", tempItems, previousSlides: getPreviousSlides(), nextSlides: getNextSlides(), attributionString, translations: bibles.length })
 
-        // track
-        let reference = `${bibles[0].book} ${bibles[0].chapter}:${verseRange}`
-        bibles.forEach((translation) => {
-            let name = translation.version || ""
-            let apiId = translation.api ? $scriptures[translation.id!]?.id || translation.id || "" : null
-            if (name || apiId) trackScriptureUsage(name, apiId, reference)
-        })
 
         // play template background
         if (!templateBackground) return
