@@ -27,6 +27,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run release
+      - name: Upload Release Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-artifacts
+          path: dist/**
 
   publish_linux:
     name: "Publish Linux x64"
@@ -51,6 +56,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run release
+      - name: Upload Release Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-artifacts
+          path: dist/**
 
   # This needs it's own build
   # https://github.com/ChurchApps/FreeShow/issues/562
@@ -68,8 +78,7 @@ jobs:
           node-version: 22
 
       - name: Install libraries
-        run:
-          |
+        run: |
           sudo apt-get update
           sudo apt-get install -y libfontconfig1-dev uuid-dev --fix-missing
 
@@ -77,8 +86,7 @@ jobs:
         run: npm install
 
       - name: Install FPM
-        run:
-          |
+        run: |
           sudo apt-get install ruby ruby-dev build-essential
           sudo gem install --no-document fpm
 
@@ -92,6 +100,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           USE_SYSTEM_FPM: true
         run: npm run release:arm64
+      - name: Upload Release Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-arm-artifacts
+          path: dist/**
 
   publish_mac:
     name: "Publish MacOS"
@@ -131,3 +144,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run release
+      - name: Upload Release Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-artifacts
+          path: dist/**
