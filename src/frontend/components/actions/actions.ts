@@ -60,7 +60,7 @@ export async function runAction(action, { midiIndex = -1, slideIndex = -1 } = {}
         actionId = getActionTriggerId(actionId)
 
         if (actionId === "wait") {
-            await wait(triggerData.number * 1000)
+            await wait((triggerData.number || 0) * 1000)
             return
         }
 
@@ -141,22 +141,20 @@ export function checkStartupActions() {
     customActionActivation("startup")
 }
 
-export function customActionActivation(id: string) {
+export function customActionActivation(id: string, specificActivation: any = null) {
     let actionTriggered = false
     Object.keys(get(actions)).forEach((actionId) => {
         const action = get(actions)[actionId]
-        const customActivation = id.split("___")[0]
-        const specificActivation = id.split("___")[1]
 
-        if (action.customActivation !== customActivation || action.enabled === false) return
-        if (specificActivation && action.specificActivation?.includes(customActivation) && action.specificActivation.split("__")[1] !== specificActivation) return
+        if (action.customActivation !== id || action.enabled === false) return
+        if (specificActivation && action.specificActivation?.includes(id) && (!action.specificActivation.split("__")[1] || action.specificActivation.split("__")[1] !== specificActivation)) return
 
         runAction(action)
         actionTriggered = true
     })
 
     if (actionTriggered && id === "startup") {
-        newToast("$toast.starting_action")
+        newToast("toast.starting_action")
     }
 }
 
@@ -175,8 +173,12 @@ export function addSlideAction(slideIndex: number, actionId: string, actionValue
 
     const action = { id, triggers: [actionId], actionValues }
 
+    // Check if this action type can have multiple instances
+    const data = actionData[actionId]
+    const canAddMultiple = data?.canAddMultiple || allowMultiple
+
     const existingIndex = slideActions.slideActions.findIndex((a) => a.triggers?.[0] === actionId)
-    if (allowMultiple || existingIndex < 0) slideActions.slideActions.push(action)
+    if (canAddMultiple || existingIndex < 0) slideActions.slideActions.push(action)
     else slideActions.slideActions[existingIndex] = action
 
     history({ id: "SHOW_LAYOUT", newData: { key: "actions", data: slideActions, indexes: [slideIndex] } })

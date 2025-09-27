@@ -134,7 +134,7 @@
 
 {#if !$focusMode}
     <FloatingInputs side="left" onlyOne>
-        <MaterialButton icon="folder" on:click={() => sendMain(Main.SYSTEM_OPEN, path)}>
+        <MaterialButton icon="folder" on:click={() => sendMain(Main.OPEN_FOLDER_PATH, path)}>
             <T id="main.open" />
         </MaterialButton>
     </FloatingInputs>
@@ -177,7 +177,7 @@
         height: 80%;
         flex-wrap: wrap;
         place-items: start;
-        inset-inline-start: 0;
+        left: 0;
     }
     .icons.right {
         /* inset-inline-end: 2px; */

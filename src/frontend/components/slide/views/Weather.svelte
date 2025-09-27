@@ -67,12 +67,12 @@
 
     function getTime(time: number | string) {
         const currentTime = new Date(time)
-        const twelwe = $timeFormat === "12"
+        const twelve = $timeFormat === "12"
 
         let h = currentTime.getHours()
 
         // 12-hour
-        if (twelwe) {
+        if (twelve) {
             if (h === 0) h = 12
             else if (h > 12) h -= 12
 
@@ -130,7 +130,7 @@
     .credits {
         position: absolute;
         bottom: 10px;
-        inset-inline-start: 50%;
+        left: 50%;
         transform: translateX(-50%);
 
         opacity: 0.4;

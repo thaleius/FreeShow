@@ -2,7 +2,7 @@
     import { createEventDispatcher } from "svelte"
     import { translateText } from "../../utils/language"
 
-    export let value: string = ""
+    export let value = ""
     export let label: string
 
     export let id = ""
@@ -32,7 +32,7 @@
     }
 </script>
 
-<div class="textfield {center ? 'centered' : ''} {disabled ? 'disabled' : ''}">
+<div class="textfield {center ? 'centered' : ''} {disabled ? 'disabled' : ''} {$$props.class || ''}">
     <div class="background" />
     <textarea bind:value {id} {placeholder} {disabled} {autofocus} use:select class="input edit" on:input={input} on:change={change} {rows} />
     <label for={id}>{translateText(label)}</label>

@@ -5,16 +5,13 @@
     import { translateText } from "../../../utils/language"
     import { keysToID, sortByName, sortObject } from "../../helpers/array"
     import Icon from "../../helpers/Icon.svelte"
-    import { getActiveOutputs } from "../../helpers/output"
     import Button from "../../inputs/Button.svelte"
-
-    export let currentOutputId: string | null
 
     // onMount(() => {
     //     currentOutputId = getActiveOutputs({}, true, true)[0]
     // })
 
-    $: outs = sortObject(sortByName(keysToID($outputs).filter((a) => a.enabled && !a.isKeyOutput)), "stageOutput")
+    $: outs = sortObject(sortByName(keysToID($outputs).filter((a) => a.enabled)), "stageOutput")
 
     function toggleOutput(e: any, id: string) {
         if (outs.length <= 1) return
@@ -35,14 +32,12 @@
                 let activeList = Object.values(a).filter((a) => !a.stageOutput && a.enabled && a.active === true)
                 if (!activeList.length) {
                     a[id].active = true
-                    newToast("$toast.one_output")
+                    newToast("toast.one_output")
                 }
             }
 
             return a
         })
-
-        currentOutputId = getActiveOutputs()[0]
     }
 
     // let allSameState = true
@@ -62,14 +57,14 @@
 </script>
 
 {#if outs.length > 1}
-    <div>
+    <div class="outputTitles">
         {#each outs as output}
             <Button
                 title={$dictionary.actions?.toggle_output_lock}
                 on:click={(e) => toggleOutput(e, output.id)}
                 id={output.id}
                 active={output.active}
-                style="flex: 1;{output.active ? 'border-bottom: 2px solid ' + output.color + ' !important;' : ''}"
+                style="width: 50%;{output.active ? 'border-bottom: 2px solid ' + output.color + ' !important;' : ''}"
                 class="output_button context #output_active_button"
                 bold={false}
                 center
@@ -80,7 +75,7 @@
                     class:locked={!output.active}
                     class:invisible={output.invisible}
                     class:ndi={$ndiData[output?.id || ""]?.connections > 0}
-                    class:active={$outputState.find((a) => a.id === output.id)?.active}
+                    class:active={$outputState.find((a) => a.id === output.id)?.active === true}
                     data-title={translateText(getOutputStateTitle(output, { $outputState, $ndiData }))}
                 ></div>
                 {#if output.stageOutput}<Icon id="stage" size={0.8} right white />{/if}
@@ -93,18 +88,20 @@
 {/if}
 
 <style>
-    div {
+    .outputTitles {
         display: flex;
         flex-wrap: wrap;
         /* overflow-x: auto; */
+
+        background-color: var(--primary-darker);
     }
 
-    div :global(button) {
+    .outputTitles :global(button) {
         cursor: pointer;
         border-bottom: 2px solid var(--primary-lighter) !important;
         white-space: nowrap;
     }
-    div :global(button.active:hover) {
+    .outputTitles :global(button.active:hover) {
         filter: brightness(0.8);
     }
 

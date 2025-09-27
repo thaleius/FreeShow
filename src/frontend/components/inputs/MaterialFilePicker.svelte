@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { createEventDispatcher, onDestroy } from "svelte"
+    import { createEventDispatcher, onDestroy, onMount } from "svelte"
     import { uid } from "uid"
     import { Main } from "../../../types/IPC/Main"
     import { ToMain } from "../../../types/IPC/ToMain"
@@ -11,13 +11,18 @@
 
     export let label: string
     export let value: string | undefined
-    export let title: string = ""
+    export let title = ""
     export let filter: { name: string; extensions: string[] }
-    export let icon: string = ""
-    export let multiple: boolean = false
+    export let icon = ""
+    export let multiple = false
 
     export let disabled = false
+    export let autoTrigger = false
     export let allowEmpty = false
+
+    onMount(() => {
+        if (autoTrigger && !value) pickMedia()
+    })
 
     function pickMedia() {
         if (disabled) return
@@ -62,7 +67,11 @@
         on:keydown={handleKeydown}
     >
         <span class="selected-text">
-            {#if value}{getFileName(value)}{/if}
+            {#if value?.includes("data:")}
+                Embeded data
+            {:else if value}
+                {getFileName(value)}
+            {/if}
         </span>
 
         <div class="arrow">

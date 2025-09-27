@@ -1,7 +1,7 @@
 <script lang="ts">
     import { createEventDispatcher } from "svelte"
     import type { SelectIds } from "../../../types/Main"
-    import { actions, activeActionTagFilter, activeDrawerTab, activeVariableTagFilter, audioPlaylists, drawerTabsData } from "../../stores"
+    import { actions, activeActionTagFilter, activeDrawerTab, activeVariableTagFilter, audioPlaylists, drawerTabsData, templates } from "../../stores"
     import { translateText } from "../../utils/language"
     import { getActionIcon } from "../actions/actions"
     import Icon from "../helpers/Icon.svelte"
@@ -16,10 +16,11 @@
     $: label = category.label
     $: icon = category.icon
     $: action = category.action || ""
+    $: template = category.template || ""
     $: count = category.count || 0
     $: readOnly = category.readOnly || false
 
-    export let parentId: string = ""
+    export let parentId = ""
     export let isSubmenu = false
     $: submenu = category.submenu || {}
 
@@ -49,7 +50,7 @@
         dispatch("rename", { id, value: e.detail.value })
     }
 
-    const defaultFolders = ["all", "unlabeled", "favourites", "effects_library", "effects", "online", "screens", "cameras", "microphones", "audio_streams"]
+    const defaultFolders = ["all", "unlabeled", "number", "favourites", "effects_library", "effects", "online", "screens", "cameras", "microphones", "audio_streams"]
     const tabsWithCategories = ["shows", "media", "audio", "overlays", "templates", "scripture"]
 
     $: noEdit = !tabsWithCategories.includes(drawerId) || defaultFolders.includes(id)
@@ -96,8 +97,13 @@
             {/if}
         </div>
 
+        {#if template && $templates[template]}
+            <span style="padding: 0 5px;" data-title={translateText(`info.template: <b>${$templates[template].name}</b>`)}>
+                <Icon id="templates" size={0.8} white />
+            </span>
+        {/if}
         {#if action && $actions[action]}
-            <span style="padding: 0 5px;" data-title={$actions[action].name}>
+            <span style="padding: 0 5px;" data-title={translateText(`popup.action: <b>${$actions[action].name}</b>`)}>
                 <Icon id={getActionIcon(action)} size={0.8} white />
             </span>
         {/if}

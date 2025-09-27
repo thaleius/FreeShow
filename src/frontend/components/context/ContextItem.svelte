@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { cameraManager } from "../../media/cameraManager"
     import {
         actions,
         activeEdit,
@@ -6,12 +7,14 @@
         activeRecording,
         activeShow,
         categories,
+        colorbars,
         disabledServers,
         drawerTabsData,
         effects,
         effectsLibrary,
         events,
         forceClock,
+        livePrepare,
         media,
         os,
         outputs,
@@ -19,6 +22,7 @@
         overlays,
         projects,
         redoHistory,
+        scriptures,
         selected,
         shows,
         showsCache,
@@ -187,8 +191,13 @@
             disabled = true
         },
         favourite: () => {
-            let path = $selected.data[0]?.path || $selected.data[0]?.id
-            if (path && $media[path]?.favourite === true) enabled = true
+            if ($selected.id?.includes("category_scripture")) {
+                let id = $selected.data[0]
+                enabled = !!$scriptures[id]?.favorite
+            } else {
+                let path = $selected.data[0]?.path || $selected.data[0]?.id
+                enabled = !!$media[path]?.favourite
+            }
         },
         effects_library_add: () => {
             // WIP don't show this if not an effect
@@ -199,6 +208,11 @@
 
             enabled = isEnabled
             menu.label = isEnabled ? "media.effects_library_remove" : "media.effects_library_add"
+        },
+        startup_activate: () => {
+            const startupCameras = cameraManager.getStartupCameras()
+            const camId = $selected.data[0]?.id
+            enabled = camId && startupCameras.includes(camId)
         },
         lock_to_output: () => {
             let id = $selected.data[0]
@@ -220,7 +234,7 @@
             disabled = !!$outputs[outputId]?.invisible
         },
         move_to_front: () => {
-            let previewOutputs = keysToID($outputs).filter((a) => a.enabled && !a.isKeyOutput) //  && !a.invisible
+            let previewOutputs = keysToID($outputs).filter((a) => a.enabled) //  && !a.invisible
             // WIP check currently selected against the other outputs...
             if (previewOutputs.length !== 2) {
                 disabled = false
@@ -245,6 +259,14 @@
 
             enabled = isEnabled
             menu.label = isEnabled ? "context.enable_preview" : "context.hide_from_preview"
+        },
+        test_pattern: () => {
+            const outputId = contextElem?.id || ""
+            enabled = !!$colorbars[outputId]
+        },
+        live_prepare: () => {
+            const outputId = contextElem?.id || ""
+            enabled = !!$livePrepare[outputId]
         },
         place_under_slide: () => {
             let id = $selected.data[0]
@@ -303,7 +325,7 @@
     function getShortcuts() {
         // WIP multiple
         let s = menu.shortcuts![0]
-        if ($os.platform === "darwin") s = s.replaceAll("Ctrl", "Cmd")
+        if ($os.platform === "darwin") s = s.replaceAll("Ctrl", "Cmd") // .replaceAll("Alt", "Option")
         shortcut = s
     }
 

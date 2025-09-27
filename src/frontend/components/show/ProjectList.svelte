@@ -14,7 +14,7 @@
     import SelectElem from "../system/SelectElem.svelte"
 
     export let tree: Tree[]
-    export let readOnly: boolean = false
+    export let readOnly = false
 
     let visibleArchives: string[] = []
 
@@ -55,7 +55,7 @@
             if (project.type === "folder" || !project.archived) return
 
             if (!archivedCount[project.parent]) {
-                archivedCount[project.parent] = { id: project.id!, count: 0 }
+                archivedCount[project.parent] = { id: project.id, count: 0 }
             }
             archivedCount[project.parent].count++
         })
@@ -153,7 +153,7 @@
     ///
 
     let pathToActive = ""
-    $: if ($activeProject) updateActivePath()
+    $: if ($activeProject || tree) updateActivePath()
     function updateActivePath() {
         let paths: string[] = []
         let currentParent = $projects[$activeProject!]?.parent

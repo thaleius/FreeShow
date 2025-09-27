@@ -1,3 +1,4 @@
+import type { AutosizeTypes } from "../frontend/components/edit/scripts/autosize"
 import type { Input } from "./Input"
 import type { Animation } from "./Output"
 import type { Resolution } from "./Settings"
@@ -23,6 +24,7 @@ export interface Show {
         // resolution?: Resolution
         template: null | ID
         customAction?: string // special custom trigger
+        customFonts?: { name: string; path: string }[]
     }
     timestamps: {
         created: number
@@ -102,7 +104,7 @@ export interface Item {
     lines?: Line[]
     list?: List
     auto?: boolean
-    textFit?: string // auto size text fix option (default: shrinkToFit)
+    textFit?: AutosizeTypes // auto size text fix option (default: shrinkToFit)
     autoFontSize?: number // only used to store the calculated auto size text size
     style: string
     align?: string
@@ -113,6 +115,7 @@ export interface Item {
     clock?: Clock
     events?: DynamicEvent
     type?: ItemType
+    decoration?: boolean // ppt imported shapes (no selection directly)
     mirror?: Mirror
     src?: string // media item path
     customSvg?: string
@@ -212,9 +215,15 @@ export interface Scrolling {
     speed?: number
 }
 
-export interface Condition {
-    scenario: string
-    values: { [key: string]: string }[]
+// pre 1.5.0
+// export interface Condition {
+//     scenario: string
+//     values: { [key: string]: string }[]
+// }
+// [outer_or, [outer_and, [inner_or, [inner_and, [content, {}}]]]]]
+export type Condition = ConditionValue[][][][]
+export interface ConditionValue {
+    [key: string]: string
 }
 
 export interface Weather {
@@ -317,7 +326,7 @@ export interface SlideData {
         stopTimers?: boolean
         trigger?: string
         audioStream?: string
-        outputStyle?: string
+        outputStyle?: string // deprecated
         startTimer?: boolean
     }
     // actions?: {} // to begininng / index, clear (all), start timer, start audio/music ++

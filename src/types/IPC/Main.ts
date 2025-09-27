@@ -78,6 +78,7 @@ export enum Main {
     GET_WINDOWS = "GET_WINDOWS",
     GET_DISPLAYS = "GET_DISPLAYS",
     OUTPUT = "OUTPUT",
+    DOES_MEDIA_EXIST = "DOES_MEDIA_EXIST",
     GET_THUMBNAIL = "GET_THUMBNAIL",
     SAVE_IMAGE = "SAVE_IMAGE",
     PDF_TO_IMAGE = "PDF_TO_IMAGE",
@@ -94,6 +95,7 @@ export enum Main {
     ACCESS_CAMERA_PERMISSION = "ACCESS_CAMERA_PERMISSION",
     ACCESS_MICROPHONE_PERMISSION = "ACCESS_MICROPHONE_PERMISSION",
     ACCESS_SCREEN_PERMISSION = "ACCESS_SCREEN_PERMISSION",
+    LIBREOFFICE_CONVERT = "LIBREOFFICE_CONVERT",
     SLIDESHOW_GET_APPS = "SLIDESHOW_GET_APPS",
     START_SLIDESHOW = "START_SLIDESHOW",
     PRESENTATION_CONTROL = "PRESENTATION_CONTROL",
@@ -155,6 +157,7 @@ export interface MainSendPayloads {
     [Main.GET_EMPTY_SHOWS]: { path: string; cached: Shows }
     [Main.FULL_SHOWS_LIST]: { path: string }
     [Main.OUTPUT]: "true" | "false"
+    [Main.DOES_MEDIA_EXIST]: { path: string; creationTime?: number; noCache?: boolean }
     [Main.GET_THUMBNAIL]: { input: string; size: number }
     [Main.SAVE_IMAGE]: { path: string; base64?: string; filePath?: string[]; format?: "png" | "jpg" }
     [Main.PDF_TO_IMAGE]: { dataPath: string; filePath: string }
@@ -168,6 +171,7 @@ export interface MainSendPayloads {
     [Main.NOW_PLAYING_UNSET]: { dataPath: string }
     // [Main.MEDIA_BASE64]: { id: string; path: string }[]
     [Main.CAPTURE_SLIDE]: { output: { [key: string]: Output }; resolution: Resolution }
+    [Main.LIBREOFFICE_CONVERT]: { type: string; dataPath: string }
     [Main.START_SLIDESHOW]: { path: string; program: string }
     [Main.PRESENTATION_CONTROL]: { action: string }
     [Main.START]: { ports: { [key: string]: number }; max: number; disabled: { [key: string]: boolean }; data: { [key: string]: ServerData } }
@@ -244,12 +248,13 @@ export interface MainReturnPayloads {
     [Main.FULL_SHOWS_LIST]: string[]
     [Main.GET_SCREENS]: Promise<{ name: string; id: string }[]>
     [Main.GET_WINDOWS]: Promise<{ name: string; id: string }[]>
+    [Main.DOES_MEDIA_EXIST]: Promise<{ path: string; exists: boolean; creationTime?: number }>
     [Main.GET_THUMBNAIL]: { output: string; input: string; size: number }
     // [Main.PDF_TO_IMAGE]: Promise<string[]>
     [Main.READ_EXIF]: Promise<{ id: string; exif: ExifData }>
     [Main.MEDIA_CODEC]: Promise<{ path: string; codecs: string[]; mimeType: string; mimeCodec: string }>
     [Main.MEDIA_TRACKS]: Promise<{ path: string; tracks: Subtitle[] }>
-    [Main.MEDIA_IS_DOWNLOADED]: Promise<string | null>
+    [Main.MEDIA_IS_DOWNLOADED]: string | null
     // [Main.MEDIA_BASE64]: { id: string; content: string }[]
     [Main.CAPTURE_SLIDE]: Promise<{ base64: string } | undefined>
     [Main.SLIDESHOW_GET_APPS]: string[]

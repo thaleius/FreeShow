@@ -1,8 +1,8 @@
 <script type="ts">
     import { slide } from "svelte/transition"
-    import { activeEdit, activeProfile, activeShow, dictionary, drawTool, os, outputDisplay, outputs, paintCache, profiles, saved, shows } from "../../stores"
+    import { activeEdit, activeProfile, activeShow, dictionary, drawSettings, drawTool, os, outputDisplay, outputs, paintCache, profiles, saved, shows } from "../../stores"
     import Icon from "../helpers/Icon.svelte"
-    import { displayOutputs } from "../helpers/output"
+    import { toggleOutputs } from "../helpers/output"
     import T from "../helpers/T.svelte"
     import Button from "../inputs/Button.svelte"
     import TopButton from "../inputs/TopButton.svelte"
@@ -23,6 +23,8 @@
     function toggleOutput(e: any) {
         if (cancelConfirmTimeout) clearTimeout(cancelConfirmTimeout)
 
+        const forceKey = e.ctrlKey || e.metaKey
+
         if (!$outputDisplay || confirm) {
             if (confirm) {
                 // prevent displaying just after close
@@ -31,11 +33,10 @@
             }
 
             confirm = false
-            displayOutputs(e)
+            toggleOutputs(null, { force: forceKey })
             return
         }
 
-        let forceKey = e.ctrlKey || e.metaKey
         if (forceKey) return
 
         confirm = true
@@ -74,7 +75,7 @@
     </span>
     <span style="width: var(--navigation-width);justify-content: flex-end;">
         <!-- <TopButton id="stage" hideLabel /> -->
-        <TopButton id="draw" red={$drawTool === "fill" || $drawTool === "zoom" || !!($drawTool === "paint" && $paintCache?.length)} hideLabel />
+        <TopButton id="draw" red={$drawTool === "fill" || ($drawTool === "zoom" && $drawSettings.zoom?.size !== 100) || !!($drawTool === "paint" && $paintCache?.length)} hideLabel />
         {#if !settingsDisabled}
             <TopButton id="settings" hideLabel />
         {/if}
@@ -151,7 +152,7 @@
 
     .unsaved {
         position: absolute;
-        inset-inline-start: 0;
+        left: 0;
         height: 100%;
         width: 5px;
         background-color: rgb(255 0 0 / 0.25);

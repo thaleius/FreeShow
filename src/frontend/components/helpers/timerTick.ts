@@ -3,7 +3,7 @@ import type { Event } from "../../../types/Calendar"
 import { STAGE } from "../../../types/Channels"
 import { activeTimers, currentWindow, dictionary, events, nextActionEventPaused, nextActionEventStart, timers } from "../../stores"
 import { newToast } from "../../utils/common"
-import { translate } from "../../utils/language"
+import { translateText } from "../../utils/language"
 import { send } from "../../utils/request"
 import { actionData } from "../actions/actionData"
 import { customActionActivation, runAction } from "../actions/actions"
@@ -68,7 +68,7 @@ function increment(timer: { id: string; start: number; end: number;[key: string]
 
         // ended
         checkNextAfterMedia(timer.id, "timer")
-        customActionActivation(`timer_end___` + timer.id)
+        customActionActivation("timer_end", timer.id)
     }
 
     if ((timer.currentTime === timer.end && !timer.overflow) || timer.paused) return timer
@@ -145,7 +145,7 @@ export function startEventTimer() {
             if (get(nextActionEventPaused)) return
 
             const actionId = event.action.id
-            const actionName = translate(actionData[actionId]?.name)
+            const actionName = translateText(actionData[actionId]?.name)
 
             const timeLeft: number = eventTime.getTime() - currentTime.getTime()
             if (i === 0) nextActionEventStart.set({ name: actionName, timeLeft })
@@ -199,7 +199,7 @@ export function checkTimers() {
 
         if (time < 0 && time >= -1) {
             checkNextAfterMedia(id, "timer")
-            customActionActivation(`timer_end___` + id)
+            customActionActivation("timer_end", id)
         }
     })
 

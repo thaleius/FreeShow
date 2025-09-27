@@ -135,11 +135,11 @@
     // delete media thumbnail cache
     // function deleteCache() {
     //     if (!Object.keys($mediaCache).length) {
-    //         newToast("$toast.empty_cache")
+    //         newToast("toast.empty_cache")
     //         return
     //     }
 
-    //     newToast("$toast.deleted_cache")
+    //     newToast("toast.deleted_cache")
     //     mediaCache.set({})
     //     cacheSize = "0 Bytes"
     // }
@@ -169,9 +169,11 @@
 <!-- <InputRow arrow={$alertUpdates}> -->
 <MaterialToggleSwitch style="flex: 1;" label="settings.alert_updates" checked={$alertUpdates} defaultValue={true} on:change={(e) => alertUpdates.set(e.detail)} />
 <!-- <div slot="menu"> -->
-<MaterialToggleSwitch label="Alert when a new beta version is available" checked={$special.betaVersionAlert} defaultValue={false} on:change={(e) => updateSpecial(e.detail, "betaVersionAlert")} />
+<MaterialToggleSwitch label="settings.alert_updates_beta" checked={$special.betaVersionAlert} defaultValue={false} on:change={(e) => updateSpecial(e.detail, "betaVersionAlert")} />
 <!-- </div> -->
 <!-- </InputRow> -->
+
+<MaterialToggleSwitch label="settings.auto_locate_missing_media_files" checked={$special.autoLocateMedia ?? true} defaultValue={true} on:change={(e) => updateSpecial(e.detail, "autoLocateMedia")} />
 
 <MaterialToggleSwitch label="settings.popup_before_close" checked={$special.showClosePopup || false} defaultValue={false} on:change={(e) => updateSpecial(e.detail, "showClosePopup")} />
 

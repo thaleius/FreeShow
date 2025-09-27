@@ -148,37 +148,68 @@ async function toDataURL(url: string): Promise<string> {
     })
 }
 
+// DEPRECATED
 // check if media file exists in plain js
-export function checkMedia(src: string): Promise<boolean> {
-    const extension = getExtension(src)
-    const isVideo = videoExtensions.includes(extension)
-    const isAudio = !isVideo && audioExtensions.includes(extension)
+// function checkMedia(src: string): Promise<boolean> {
+//     const extension = getExtension(src)
+//     const isVideo = videoExtensions.includes(extension)
+//     const isAudio = !isVideo && audioExtensions.includes(extension)
 
-    return new Promise((resolve) => {
-        let elem
-        if (isVideo) {
-            elem = document.createElement("video")
-            elem.onloadeddata = () => finish()
-        } else if (isAudio) {
-            elem = document.createElement("audio")
-            elem.onloadeddata = () => finish()
-        } else {
-            elem = new Image()
-            elem.onload = () => finish()
-        }
+//     return new Promise((resolve) => {
+//         let elem
+//         if (isVideo) {
+//             elem = document.createElement("video")
+//             elem.onloadeddata = () => finish()
+//         } else if (isAudio) {
+//             elem = document.createElement("audio")
+//             elem.onloadeddata = () => finish()
+//         } else {
+//             elem = new Image()
+//             elem.onload = () => finish()
+//         }
 
-        elem.onerror = () => finish(false)
-        elem.src = encodeFilePath(src)
+//         elem.onerror = () => finish(false)
+//         elem.src = encodeFilePath(src)
 
-        const timedout = setTimeout(() => {
-            finish(false)
-        }, 3000)
+//         const timedout = setTimeout(() => {
+//             finish(false)
+//         }, 3000)
 
-        function finish(response = true) {
-            clearTimeout(timedout)
-            resolve(response)
-        }
-    })
+//         function finish(response = true) {
+//             clearTimeout(timedout)
+//             resolve(response)
+//         }
+//     })
+// }
+
+const existingMedia: string[] = []
+export async function doesMediaExist(path: string, noCache = false) {
+    if (existingMedia.includes(path)) return true
+
+    if (noCache) {
+        const existsDataNoCache = await requestMain(Main.DOES_MEDIA_EXIST, { path, noCache })
+        if (existsDataNoCache.exists) existingMedia.push(path)
+        return existsDataNoCache.exists
+    }
+
+    const creationTime = get(media)[path]?.creationTime || 0
+    const existsData = await requestMain(Main.DOES_MEDIA_EXIST, { path, creationTime })
+
+    // update "media"
+    if (!existsData.exists || !creationTime) {
+        media.update(a => {
+            if (existsData.exists && a[path]) {
+                a[path].creationTime = existsData.creationTime
+            } else {
+                a[path] = { creationTime: existsData.creationTime }
+            }
+
+            return a
+        })
+    }
+
+    if (existsData.exists) existingMedia.push(path)
+    return existsData.exists
 }
 
 export async function getMediaInfo(path: string): Promise<{ codecs: string[]; mimeType: string; mimeCodec: string } | null> {
@@ -221,7 +252,7 @@ export async function isVideoSupported(path: string) {
     // not reliable:
     // const isSupported = MediaSource.isTypeSupported(info.mimeCodec)
 
-    if (isUnsupported) newToast("$toast.unsupported_video")
+    if (isUnsupported) newToast("toast.unsupported_video")
     return !isUnsupported
 }
 
@@ -249,11 +280,18 @@ export function enableSubtitle(video: HTMLVideoElement, languageId: string) {
 }
 
 export function getMediaStyle(mediaObj: MediaStyle | undefined, currentStyle: Styles | undefined) {
+    const fitOptions = {
+        blurAmount: currentStyle?.blurAmount ?? 6,
+        blurOpacity: currentStyle?.blurOpacity || 0.3
+    }
+
     const mediaStyle: MediaStyle = {
         filter: "",
         flipped: false,
         flippedY: false,
         fit: currentStyle?.fit || "contain",
+        fitOptions,
+        volume: currentStyle?.volume ?? 100,
         speed: "1",
         fromTime: 0,
         toTime: 0,
@@ -362,10 +400,11 @@ export async function getBase64Path(path: string, size: number = mediaSize.big) 
     return base64Path || thumbnailPath
 }
 
+// check multiple times as thumbnail should be created if it does not exist
 export async function checkThatMediaExists(path: string, iteration = 1): Promise<boolean> {
     if (iteration > 8) return false
 
-    const exists = await checkMedia(path)
+    const exists = await doesMediaExist(path, true)
     if (!exists) {
         await wait(500 * iteration)
         return checkThatMediaExists(path, iteration + 1)
@@ -538,4 +577,58 @@ export async function downloadOnlineMedia(url: string) {
 
     sendMain(Main.MEDIA_DOWNLOAD, { url, dataPath: get(dataPath) })
     return url
+}
+
+export async function getMediaFileFromClipboard(e: ClipboardEvent): Promise<string | null> {
+    const items = e.clipboardData?.items
+    if (!items) return null
+
+    return new Promise((resolve) => {
+        for (const item of items) {
+            if (!item.type.startsWith("image/")) continue
+
+            const file = item.getAsFile()
+            if (!file) return resolve(null)
+
+            const reader = new FileReader()
+            reader.onload = async (event) => {
+                // base64 image data
+                const dataUrl = event.target?.result as string
+                const compressed = await compressImage(dataUrl)
+                resolve(compressed)
+            }
+            reader.readAsDataURL(file)
+        }
+    })
+}
+
+function compressImage(dataUrl: string, maxWidth = 1920, maxHeight = 1080, quality = 0.8): Promise<string> {
+    return new Promise((resolve) => {
+        const img = new Image()
+
+        img.onload = () => {
+            let { width, height } = img
+            if (width > maxWidth || height > maxHeight) {
+                const ratio = Math.min(maxWidth / width, maxHeight / height)
+                width = Math.round(width * ratio)
+                height = Math.round(height * ratio)
+            }
+
+            const canvas = document.createElement("canvas")
+            canvas.width = width
+            canvas.height = height
+
+            const ctx = canvas.getContext("2d")
+            ctx?.drawImage(img, 0, 0, width, height)
+
+            // use png if image has transparency
+            const imageData = ctx?.getImageData(0, 0, width, height)
+            const hasTransparency = imageData?.data.some((_, i) => i % 4 === 3 && imageData.data[i] < 255)
+
+            if (hasTransparency) resolve(canvas.toDataURL("image/png"))
+            else resolve(canvas.toDataURL("image/jpeg", quality))
+        }
+
+        img.src = dataUrl
+    })
 }

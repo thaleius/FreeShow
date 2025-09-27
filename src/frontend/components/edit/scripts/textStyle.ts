@@ -1,4 +1,5 @@
 import type { Item, Line, Slide } from "../../../../types/Show"
+import { replaceVirtualBreaks } from "../../../show/slides"
 
 // add new style to text by selection
 export function addStyle(selection: { start: number; end: number }[], item: Item, style: string | any[]): Item {
@@ -185,19 +186,19 @@ export function getSelectionRange(): { start: number; end: number }[] {
 // return item style at text length pos
 export function getItemStyleAtPos(lines: Line[], pos: null | { start: number; end: number }[]) {
     let style = ""
-    ;(pos || lines).forEach((_a: any, i: number) => {
-        let currentPos = 0
-        lines[i]?.text?.some((text) => {
-            // if (pos) console.log(currentPos, pos[i].end, currentPos <= pos[i].end, currentPos + text.value.length >= pos[i].end)
-            if (pos?.[i] && currentPos <= pos[i].end && currentPos + text.value.length >= pos[i].end) {
-                style = text.style
-                return true
-            }
+        ; (pos || lines).forEach((_a: any, i: number) => {
+            let currentPos = 0
+            lines[i]?.text?.some((text) => {
+                // if (pos) console.log(currentPos, pos[i].end, currentPos <= pos[i].end, currentPos + text.value.length >= pos[i].end)
+                if (pos?.[i] && currentPos <= pos[i].end && currentPos + text.value.length >= pos[i].end) {
+                    style = text.style
+                    return true
+                }
 
-            currentPos += text.value.length
-            return false
+                currentPos += text.value.length
+                return false
+            })
         })
-    })
 
     // filter out empty lines
     lines = lines.filter((a) => a.text.length)
@@ -209,8 +210,10 @@ export function getItemStyleAtPos(lines: Line[], pos: null | { start: number; en
 
 // get item align at selected pos
 export function getLastLineAlign(item: Item, selection: any): string {
+    if (!selection?.length) return item?.lines?.[0].align || ""
+
     let last = ""
-    item?.lines!.forEach((line, i) => {
+    item?.lines?.forEach((line, i) => {
         if (!selection || selection[i]?.start !== undefined) last = line.align
     })
     return last
@@ -241,7 +244,7 @@ export function getTextLines(slide: Slide | { items: Item[] }) {
         if (!fullText.length) lines.pop()
     })
 
-    return lines
+    return lines.map((a) => replaceVirtualBreaks(a))
 }
 
 // get text of slides
@@ -287,59 +290,12 @@ export function getItemTextArray(item: Item): string[] {
     return text
 }
 
-// get chords map
-export function getItemChords(item: Item): string {
-    let text = ""
-    if (!Array.isArray(item?.lines)) return ""
-
-    item.lines.forEach((line) => {
-        if (!line.chords?.length) return
-
-        line.chords.forEach((chord) => {
-            text += chord.key
-        })
-    })
-
-    return text
-}
-
 export function getLineText(line: Line): string {
     let text = ""
     line?.text?.forEach((content) => {
         text += content.value
     })
     return text
-}
-
-// seperate text with breaks
-export function getItemLines(item: Item): string[] {
-    const lines: string[] = []
-    item.lines?.forEach((line) => {
-        let text = ""
-        line.text?.forEach((content) => (text += content.value))
-        lines.push(text)
-    })
-    return lines
-}
-
-// get caret pos (WIP)
-// https://stackoverflow.com/questions/4811822/get-a-ranges-start-and-end-offsets-relative-to-its-parent-container/4812022#4812022
-export function getCaretCharacterOffsetWithin(element: any) {
-    let caretOffset = 0
-    const doc = element.ownerDocument || element.document
-    const win = doc.defaultView || doc.parentWindow
-    let sel
-    if (typeof win.getSelection !== "undefined") {
-        sel = win.getSelection()
-        if (sel.rangeCount > 0) {
-            const range = win.getSelection().getRangeAt(0)
-            const preCaretRange = range.cloneRange()
-            preCaretRange.selectNodeContents(element)
-            preCaretRange.setEnd(range.endContainer, range.endOffset)
-            caretOffset = preCaretRange.toString().length
-        }
-    }
-    return caretOffset
 }
 
 export function setCaret(element: any, { line = 0, pos = 0 }, toEnd = false) {
@@ -393,102 +349,6 @@ export function setCaret(element: any, { line = 0, pos = 0 }, toEnd = false) {
 
     sel?.removeAllRanges()
     sel?.addRange(range)
-}
-
-// https://stackoverflow.com/questions/6249095/how-to-set-the-caret-cursor-position-in-a-contenteditable-element-div
-function createRange(node: any, pos: number, range: any = null) {
-    if (!range) {
-        range = document.createRange()
-        range.selectNode(node)
-        range.setStart(node, 0)
-    }
-
-    if (pos === 0) {
-        range.setEnd(node, pos)
-    } else if (node && pos > 0) {
-        if (node.nodeType === Node.TEXT_NODE) {
-            if (node.textContent.length < pos) {
-                pos -= node.textContent.length
-            } else {
-                range.setEnd(node, pos)
-                pos = 0
-            }
-        } else {
-            for (const childNode of node.childNodes) {
-                range = createRange(childNode, pos, range)
-
-                if (pos === 0) {
-                    break
-                }
-            }
-        }
-    }
-
-    return range
-}
-export function createRange2(node: any, selection: { start: number; end: number }[], range: any = null) {
-    if (!range) {
-        range = document.createRange()
-        range.selectNode(node)
-        range.setEnd(node, 0)
-    }
-
-    // console.log("CREATE RANGE: ", selection, range, node)
-
-    let started = false
-    let ended = false
-
-    selection.forEach((a, i) => {
-        if (a.start !== undefined && (!started || !ended)) {
-            const br = node.children[i]
-            let pos: null | number = 0
-            if (br.childNodes.length) {
-                new Array(...br.childNodes).forEach((text) => {
-                    pos += text.innerText.length
-                    if (!started && pos !== null && pos >= a.start) {
-                        started = true
-                        pos = null
-                        range.setStart(text.firstChild, a.start)
-                    }
-                    if (!ended && pos !== null && pos >= a.end) {
-                        ended = true
-                        pos = null
-                        range.setEnd(text.firstChild, a.end)
-                    }
-                })
-            }
-        }
-    })
-
-    return range
-}
-export function setCurrentCursorPosition(element: any, pos: number) {
-    if (pos >= 0) {
-        const selection = window.getSelection()
-
-        // pos = 90
-        // pos = 142
-        const range = createRange(element, pos)
-
-        // let range = createRange(element.childNodes[0], 5)
-
-        if (range) {
-            range.collapse(false)
-            selection?.removeAllRanges()
-            selection?.addRange(range)
-        }
-    }
-}
-
-export function setCaretPosition(elem: any, pos = 0) {
-    if (elem.createTextRange) {
-        const range = elem.createTextRange()
-        range.move("character", pos)
-        range.select()
-    } else {
-        elem.focus()
-        if (elem.selectionStart) elem.setSelectionRange(pos, pos)
-    }
 }
 
 export function setCaretAtEnd(elem: any) {

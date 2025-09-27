@@ -4,7 +4,7 @@
     import MaterialButton from "./MaterialButton.svelte"
 
     export let options: { id: string; name: string; title?: string; icon: string; disabled?: boolean; colored?: boolean }[] = []
-    export let hightlightFirst: boolean = true
+    export let hightlightFirst = true
 
     let dispatch = createEventDispatcher()
     function click(id: string) {
@@ -14,7 +14,7 @@
 
 <div class="choice" class:hightlightFirst>
     {#each options as option, i}
-        <MaterialButton title={option.title} disabled={option.disabled} class={i === 0 ? "first" : i === options.length - 1 ? "last" : ""} variant="outlined" on:click={() => click(option.id)} white>
+        <MaterialButton title={option.title || option.name} disabled={option.disabled} class={i === 0 ? "first" : i === options.length - 1 ? "last" : ""} variant="outlined" on:click={() => click(option.id)} white>
             <div class="list">
                 {#if option.icon.includes(".webp")}
                     <img src={option.icon} alt="{option.id}-logo" draggable={false} />
@@ -77,7 +77,8 @@
 
     .list p {
         max-width: 150px;
-        /* white-space: normal; */
+        white-space: normal;
+        /* text-overflow: initial; */
     }
 
     img {

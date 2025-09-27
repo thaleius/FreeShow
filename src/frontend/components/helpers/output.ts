@@ -16,13 +16,13 @@ import {
     categories,
     currentOutputSettings,
     currentWindow,
-    dictionary,
     disabledServers,
     effects,
     lockedOverlays,
     outputDisplay,
     outputs,
     outputSlideCache,
+    outputState,
     overlays,
     overlayTimers,
     playingVideos,
@@ -39,6 +39,7 @@ import {
     usageLog
 } from "../../stores"
 import { newToast } from "../../utils/common"
+import { translateText } from "../../utils/language"
 import { send } from "../../utils/request"
 import { sendBackgroundToStage } from "../../utils/stageTalk"
 import { videoExtensions } from "../../values/extensions"
@@ -53,22 +54,28 @@ import { getLayoutRef } from "./show"
 import { getFewestOutputLines, getItemWithMostLines, replaceDynamicValues } from "./showActions"
 import { _show } from "./shows"
 import { getStyles } from "./style"
+import { getFirstOutputIdWithAudableBackground } from "./video"
 
-export function displayOutputs(e: any = {}, auto = false) {
-    const forceKey = e.ctrlKey || e.metaKey
+export function toggleOutputs(outputIds: string[] | null = null, options: { force?: boolean, autoStartup?: boolean, state?: boolean } = {}) {
+    if (outputIds === null) outputIds = getActiveOutputs(get(outputs), false)
+    // if (outputIds === null) outputIds = Object.keys(get(outputs))
+
+    const outputsList = outputIds.map((id) => ({ ...get(outputs)[id], id })).filter(a => a.enabled)
+    if (!outputsList.length) return
 
     // sort so display order can be changed! (needs app restart)
-    const enabledOutputs = sortObject(sortByName(getActiveOutputs(get(outputs), false).map((id) => ({ ...get(outputs)[id], id }))), "stageOutput")
+    const sortedOutputList = sortObject(sortByName(outputsList), "stageOutput")
 
-    enabledOutputs.forEach((output) => {
-        const autoPosition = enabledOutputs.length === 1
-        send(OUTPUT, ["DISPLAY"], { enabled: forceKey || !get(outputDisplay), output, force: output.allowMainScreen || output.boundsLocked || forceKey, auto, autoPosition })
-    })
+    const currentOutputState = !!get(outputState).find(a => a.id === outputIds[0])?.active
+    const state = typeof options.state === "boolean" ? options.state : options.force || !(outputIds.length === 1 ? currentOutputState : get(outputDisplay))
+
+    const autoPosition = sortedOutputList.length === 1 && !sortedOutputList[0].forcedResolution?.width
+
+    send(OUTPUT, ["TOGGLE_OUTPUTS"], { outputs: sortedOutputList, state, force: options.force, autoStartup: options.autoStartup, autoPosition })
 }
 
 export function toggleOutput(id: string) {
-    if (!get(outputs)[id]?.enabled) return
-    send(OUTPUT, ["DISPLAY"], { enabled: "toggle", one: true, output: { id, ...get(outputs)[id] } })
+    toggleOutputs([id])
 }
 
 // background: null,
@@ -83,26 +90,25 @@ export function setOutput(type: string, data: any, toggle = false, outputId = ""
     // & set attributionString
     if (type === "slide" && data?.id) {
         const showReference = _show(data.id).get("reference")
+        const slide = _show(data.id).get("slides")?.[ref[data.index]?.id] || {}
         if (showReference?.type === "scripture") {
             const translation = showReference.data
 
             // set attributionString
             if (translation.attributionString) data.attributionString = translation.attributionString
         }
+
+        const groupId = slide.globalGroup
+        if (groupId) customActionActivation("group_start", groupId)
     }
 
     outputs.update((a) => {
-        const bindings = data?.layout ? ref[data.index]?.data?.bindings || [] : []
-        const allOutputIds = bindings.length ? bindings : getActiveOutputs()
+        const bindings = data?.bindings || (data?.layout ? ref[data.index]?.data?.bindings || [] : [])
+        const allOutputIds = bindings.length ? bindings : getActiveOutputs(a, true, false, true)
         const outs = outputId ? [outputId] : allOutputIds
         const inputData = clone(data)
 
-        let firstOutputWithBackground = allOutputIds.findIndex((id) => {
-            let layers = get(styles)[get(outputs)[id]?.style || ""]?.layers
-            if (!Array.isArray(layers)) layers = ["background"]
-            return !a[id]?.isKeyOutput && !a[id]?.stageOutput && layers.includes("background")
-        })
-        firstOutputWithBackground = Math.max(0, firstOutputWithBackground)
+        const backgroundId = getFirstOutputIdWithAudableBackground(allOutputIds)
 
         if (type === "slide" && data?.id) {
             // reset slide cache (after update)
@@ -120,7 +126,8 @@ export function setOutput(type: string, data: any, toggle = false, outputId = ""
             // run category action if show slide is not currently outputted, and it does not have a custom override action
             if (currentOutSlideId !== data?.id || resetActionTrigger) {
                 const category = get(showsCache)[data.id]?.category || ""
-                if (!overrideCategoryAction && get(categories)[category]?.action) runAction(get(actions)[get(categories)[category].action!], {}, true)
+                const categoryActionId = get(categories)[category]?.action
+                if (!overrideCategoryAction && categoryActionId) runAction(get(actions)[categoryActionId], {}, true)
             }
 
             if (overrideCategoryAction) resetActionTrigger = true
@@ -143,8 +150,7 @@ export function setOutput(type: string, data: any, toggle = false, outputId = ""
                 const slideContent = getOutputContent(id)
                 if (data && (slideContent.type === "pdf" || slideContent.type === "ppt")) clearSlide()
 
-                const index = allOutputIds.findIndex((outId) => outId === id)
-                data = changeOutputBackground(data, { output, id, mute: allOutputIds.length > 1 && index !== firstOutputWithBackground, videoOutputId: allOutputIds[firstOutputWithBackground] })
+                data = changeOutputBackground(data, { output, id, mute: allOutputIds.length > 1 && id !== backgroundId, videoOutputId: backgroundId })
             }
 
             let outData = a[id].out?.[type] || null
@@ -161,6 +167,7 @@ export function setOutput(type: string, data: any, toggle = false, outputId = ""
                     else if (get(overlayTimers)[id + overlayId]) clearOverlayTimer(id, overlayId)
                 })
             } else {
+                if (data) delete data.bindings // currently used for bg muting
                 outData = data
 
                 if (type === "overlays" || type === "effects") {
@@ -320,13 +327,14 @@ export function clearOverlayTimer(outputId: string, overlayId: string) {
 
 let sortedOutputs: (Output & { id: string })[] = []
 export function getActiveOutputs(updater: Outputs = get(outputs), hasToBeActive = true, removeKeyOutput = false, shouldRemoveStageOutput = false) {
+    // keyOutput is not in use anymore
     // WIP cache outputs
     // if (JSON.stringify(sortedOutputs.map(({ id }) => id)) !== JSON.stringify(Object.keys(updater))) {
     //     sortedOutputs = sortByName(keysToID(updater || {}))
     // }
     sortedOutputs = sortByName(keysToID(updater || {}))
 
-    let enabled = sortedOutputs.filter((a) => a.enabled === true && (removeKeyOutput ? !a.isKeyOutput : true) && (shouldRemoveStageOutput ? !a.stageOutput : true))
+    let enabled = sortedOutputs.filter((a) => a.enabled === true && (removeKeyOutput ? !(a as any).isKeyOutput : true) && (shouldRemoveStageOutput ? !a.stageOutput : true))
 
     if (hasToBeActive && enabled.filter((a) => a.active === true).length) enabled = enabled.filter((a) => a.active === true)
 
@@ -567,7 +575,7 @@ export function shouldBeCaptured(outputId: string, startup = false) {
     }
 
     // alert user that screen recording starts
-    if (!startup && Object.values(captures).filter(Boolean).length) newToast("$toast.output_capture_enabled")
+    if (!startup && Object.values(captures).filter(Boolean).length) newToast("toast.output_capture_enabled")
 
     send(OUTPUT, ["CAPTURE"], { id: outputId, captures })
 }
@@ -598,30 +606,6 @@ export const defaultOutput: Output = {
     screen: null
 }
 
-export function keyOutput(keyId: string, delOutput = false) {
-    if (!keyId) return
-
-    if (delOutput) {
-        deleteOutput(keyId)
-        return
-    }
-
-    // create new "key" output
-    outputs.update((a) => {
-        const currentOutput = clone(defaultOutput)
-        currentOutput.name = "Key"
-        currentOutput.isKeyOutput = true
-        a[keyId] = currentOutput
-
-        // show
-        // , rate: get(special).previewRate || "auto"
-        send(OUTPUT, ["CREATE"], { id: keyId, ...currentOutput })
-        if (get(outputDisplay)) send(OUTPUT, ["DISPLAY"], { enabled: true, output: { id: keyId, ...currentOutput } })
-
-        return a
-    })
-}
-
 // WIP history
 export function addOutput(onlyFirst = false, styleId = "") {
     if (onlyFirst && get(outputs).length) return
@@ -636,12 +620,12 @@ export function addOutput(onlyFirst = false, styleId = "") {
         let n = 0
         while (Object.values(output).find((a) => a.name === output[id].name + (n ? " " + n : ""))) n++
         if (n) output[id].name = output[id].name + " " + n
-        if (onlyFirst) output[id].name = get(dictionary).theme?.primary || "Primary"
+        if (onlyFirst) output[id].name = translateText("theme.primary")
 
         // show
         // , rate: get(special).previewRate || "auto"
         if (!onlyFirst) send(OUTPUT, ["CREATE"], { id, ...output[id] })
-        if (!onlyFirst && get(outputDisplay)) send(OUTPUT, ["DISPLAY"], { enabled: true, output: { id, ...output[id] } })
+        if (!onlyFirst && get(outputDisplay)) toggleOutput(id)
 
         if (get(currentOutputSettings) !== id) currentOutputSettings.set(id)
         activeRename.set("output_" + id)
@@ -676,17 +660,6 @@ export function enableStageOutput(options: any = {}) {
     return id
 }
 
-export function removeStageOutput(outputId: string) {
-    outputs.update((a) => {
-        if (!a[outputId]) return a
-
-        delete a[outputId]
-        send(OUTPUT, ["REMOVE"], { id: outputId })
-
-        return a
-    })
-}
-
 export function changeStageOutputLayout(data: API_stage_output_layout) {
     const outputIds = data.outputId ? [data.outputId] : Object.keys(get(outputs))
 
@@ -704,12 +677,10 @@ export function deleteOutput(outputId: string) {
     if (Object.keys(get(outputs)).length <= 1) return
 
     outputs.update((a) => {
-        const isKeyOutput = a[outputId].isKeyOutput
-
         send(OUTPUT, ["REMOVE"], { id: outputId })
         delete a[outputId]
 
-        if (!isKeyOutput) currentOutputSettings.set(Object.keys(a)[0])
+        currentOutputSettings.set(Object.keys(a)[0])
         return a
     })
 }
@@ -775,9 +746,12 @@ export function mergeWithTemplate(slideItems: Item[], templateItems: Item[], add
     slideItems = clone(slideItems || []).filter((a) => a && (!templateClicked || !a.fromTemplate))
 
     if (!templateItems.length) return slideItems
-    templateItems = clone(templateItems)
+    // it's the wrong way around when a template is converted to a slide/output, but it breaks more than it fixes at this time.
+    // should be reversed, but people have to invert the order of their template items order.
+    templateItems = clone(templateItems) // .reverse()
 
-    const sortedTemplateItems = sortItemsByType(templateItems)
+    const sorted = sortItemsByType(templateItems)
+    const sortedTemplateItems = clone(sorted)
 
     // reduce template textboxes to slide items
     const slideTextboxes = slideItems.reduce((count, a) => (count += (a?.type || "text") === "text" ? 1 : 0), 0)
@@ -876,12 +850,17 @@ export function mergeWithTemplate(slideItems: Item[], templateItems: Item[], add
         }
     })
 
-    // let remainingTextTemplateItems = []
     if (addOverflowTemplateItems) {
-        sortedTemplateItems.text = removeTextValue(sortedTemplateItems.text || [])
-        // remainingTextTemplateItems = templateItems.filter((a) => (a.type || "text") === "text")
+        const remainingTextTemplateItems = sorted.text?.slice(slideTextboxes) || []
+        sortedTemplateItems.text = removeTextValue(remainingTextTemplateItems)
     } else {
         delete sortedTemplateItems.text
+
+        // // don't add overflow textboxes that are not empty or does not have a dynamic value ({) ?
+        // sortedTemplateItems.text = sortedTemplateItems.text.filter(a => {
+        //     const text = getItemText(a)
+        //     return !text || text.includes("{")
+        // })
     }
 
     // remove textbox items
@@ -897,7 +876,7 @@ export function mergeWithTemplate(slideItems: Item[], templateItems: Item[], add
     // add behind existing items (any textboxes previously on top not in use will not be replaced by any underneath)
     newSlideItems = [...remainingTemplateItems, ...newSlideItems, ...(sortedTemplateItems.text || [])]
 
-    return newSlideItems
+    return newSlideItems // .reverse()
 }
 
 export function updateSlideFromTemplate(slide: Slide, template: Template, isFirst = false, removeOverflow = false) {
@@ -1100,7 +1079,6 @@ export function setTemplateStyle(outSlide: OutSlide, currentStyle: Styles, items
 
     const template = getStyleTemplate(outSlide, currentStyle)
     const templateItems = template.items || []
-
     const newItems = mergeWithTemplate(slideItems || [], templateItems, true) || []
     newItems.push(...getSlideItemsFromTemplate(template.settings || {}))
 
@@ -1201,8 +1179,8 @@ export interface OutputMetadata {
     messageStyle?: string
     messageTransition?: any
 }
-const defaultMetadataStyle = "top: 910px;inset-inline-start: 50px;width: 1820px;height: 150px;opacity: 0.8;font-size: 30px;text-shadow: 2px 2px 4px rgb(0 0 0 / 80%);"
-const defaultMessageStyle = "top: 50px;inset-inline-start: 50px;width: 1820px;height: 150px;opacity: 0.8;font-size: 50px;text-shadow: 2px 2px 4px rgb(0 0 0 / 80%);"
+const defaultMetadataStyle = "top: 910px;left: 50px;width: 1820px;height: 150px;opacity: 0.8;font-size: 30px;text-shadow: 2px 2px 4px rgb(0 0 0 / 80%);"
+const defaultMessageStyle = "top: 50px;left: 50px;width: 1820px;height: 150px;opacity: 0.8;font-size: 50px;text-shadow: 2px 2px 4px rgb(0 0 0 / 80%);"
 export function getMetadata(oldMetadata: any, show: Show | undefined, currentStyle: Styles, templatesUpdater = get(templates), outSlide: OutSlide | null) {
     const metadata: OutputMetadata = { style: getTemplateStyle("metadata", templatesUpdater) || defaultMetadataStyle }
 

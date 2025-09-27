@@ -7,8 +7,8 @@ import { sendToMain } from "../IPC/main"
 import { dataFolderNames, getDataFolder } from "../utils/files"
 import { httpsRequest } from "../utils/requests"
 import { PCO_API_URL, pcoConnect, type PCOScopes } from "./connect"
-import { Media } from "../../types/Main"
-import { Project } from "../../types/Projects"
+import type { Media } from "../../types/Main"
+import type { Project } from "../../types/Projects"
 
 const PCO_API_version = 2
 
@@ -16,6 +16,12 @@ type PCORequestData = {
     scope: PCOScopes
     endpoint: string
     params?: Record<string, string> // Add params type
+}
+
+type SongSection = {
+    label: string,
+    lyrics: string,
+    breaks_at?: number
 }
 
 interface ServiceType {
@@ -35,6 +41,11 @@ interface Plan {
     }
 }
 
+interface Arrangement {
+    id: string
+    type: string
+}
+
 interface ProjectItem {
     id: string
     attributes: {
@@ -42,6 +53,11 @@ interface ProjectItem {
         title?: string
         description?: string
         length?: number
+    }
+    relationships: {
+        arrangement: {
+            data: Arrangement | null
+        }
     }
     custom_arrangement_sequence?: any[]
 }
@@ -124,8 +140,6 @@ export async function pcoLoadServices(dataPath: string) {
 
     const results = await processAllServiceTypes(serviceTypes, dataPath)
 
-    console.debug("PCO shows count:", results.shows.length)
-
     if (results.downloadableMedia.length > 0) {
         downloadLessonsMedia(results.downloadableMedia)
     }
@@ -195,7 +209,7 @@ async function fetchServicePlans(serviceType: ServiceType) {
         return date < today + ONE_WEEK_MS
     })
 
-    console.debug(`Found ${filteredPlans.length} plans for service type ${serviceType.attributes.name} (${serviceType.id})`)
+    // console.debug(`Found ${filteredPlans.length} plans for service type ${serviceType.attributes.name} (${serviceType.id})`)
     return filteredPlans
 }
 
@@ -223,7 +237,7 @@ async function processPlan(plan: Plan, serviceType: ServiceType, dataPath: strin
     const plansEndpoint = `${typesEndpoint}/${serviceType.id}/plans`
     const itemsEndpoint = `${plansEndpoint}/${plan.id}/items`
 
-    const planItems = await pcoRequest({ scope: "services", endpoint: itemsEndpoint })
+    const planItems = await pcoRequest({ scope: "services", endpoint: itemsEndpoint, params: { per_page: "100" } })
     if (!planItems[0]?.id) return null
 
     const projectItems = []
@@ -263,20 +277,26 @@ async function processSongItem(item: ProjectItem, itemsEndpoint: string) {
     const songData = (await pcoRequest({ scope: "services", endpoint: songDataEndpoint }))[0]
     if (!songData?.id) return null
 
-    const arrangementEndpoint = `/songs/${songData.id}/arrangements`
+    const arrangementEndpoint = `/songs/${songData.id}/arrangements/${item.relationships.arrangement.data?.id}`
     const songArrangement = (await pcoRequest({ scope: "services", endpoint: arrangementEndpoint }))[0]
     if (!songArrangement?.id) return null
 
     const song = songArrangement.attributes
     const sequence = item.custom_arrangement_sequence || song.sequence || []
 
-    let sections = (await pcoRequest({
+    let sections: SongSection[] = (await pcoRequest({
         scope: "services",
-        endpoint: `${arrangementEndpoint}/${songArrangement.id}/sections`
+        endpoint: `${arrangementEndpoint}/sections`
     }))[0]?.attributes.sections || []
 
     if (!sections.length) {
         sections = sequence.map((id: any) => ({ label: id, lyrics: "" }))
+    } else {
+        sections = sections.map(normalizeSongSection)
+    }
+
+    if (sequence.length && sections.length) {
+        sections = getOrderedSections(sections, sequence)
     }
 
     const show = getShow(songData, song, sections)
@@ -286,6 +306,33 @@ async function processSongItem(item: ProjectItem, itemsEndpoint: string) {
         show: { id: showId, ...show },
         projectItem: { type: "show", id: showId, scheduleLength: item.attributes.length }
     }
+}
+
+function getOrderedSections(sections: SongSection[], sequence: any[]): SongSection[] {
+    const sectionMap: { [key: string]: SongSection } = {}
+    sections.forEach((section) => {
+        sectionMap[section.label] = section
+    })
+
+    const orderedSections: SongSection[] = []
+    sequence.forEach((label) => {
+        if (sectionMap[label]) {
+            orderedSections.push(sectionMap[label])
+        }
+    })
+
+    return orderedSections
+}
+
+function normalizeSongSection(section: SongSection): SongSection {
+    return {
+        ...section,
+        lyrics: normalizeLineBreaks(section.lyrics)
+    }
+}
+
+function normalizeLineBreaks(text: string): string {
+    return text.replace(/\n\r/g, "\n").replace(/\r\n/g, "\n").replace(/\r/g, "\n")
 }
 
 function processRegularItem(item: ProjectItem) {
@@ -356,7 +403,7 @@ function getDateTitle(dateString: string) {
     return date.toISOString().slice(0, 10)
 }
 
-const itemStyle = "inset-inline-start:50px;top:120px;width:1820px;height:840px;"
+const itemStyle = "left:50px;top:120px;width:1820px;height:840px;"
 function getShow(SONG_DATA: any, SONG: any, SECTIONS: any[]) {
     const slides: { [key: string]: Slide } = {}
     const layoutSlides: SlideData[] = []

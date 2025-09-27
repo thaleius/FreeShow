@@ -6,7 +6,7 @@
     import type { Styles } from "../../../../types/Settings"
     import type { OutBackground, Transition } from "../../../../types/Show"
     import { AudioAnalyser } from "../../../audio/audioAnalyser"
-    import { allOutputs, currentWindow, media, outputs, playerVideos, playingVideos, special, videosData, videosTime, volume } from "../../../stores"
+    import { currentWindow, media, playerVideos, playingVideos, special, videosData, videosTime, volume } from "../../../stores"
     import { destroy, receive, send } from "../../../utils/request"
     import BmdStream from "../../drawer/live/BMDStream.svelte"
     import NdiStream from "../../drawer/live/NDIStream.svelte"
@@ -66,7 +66,7 @@
     function setPreviewVideoTime() {
         // timeout in case video is going to fade out
         setTimeout(() => {
-            if (fadingOut) return
+            if (fadingOut || (!videoData.paused && videoTime < 2)) return
 
             const diff = Math.abs($videosTime[outputId] - videoTime)
             if (diff > 0.5) {
@@ -98,25 +98,15 @@
         }, timeUpdateTimeout)
     }
 
-    // key output parent
-    let keyParentId = ""
-    if ($outputs[outputId]?.isKeyOutput) getKeyParent()
-    function getKeyParent() {
-        Object.keys($allOutputs).forEach((id) => {
-            if (keyParentId) return
-            if ($allOutputs[id].keyOutput === outputId) keyParentId = id
-        })
-    }
-
     const videoReceiver = {
         TIME: (data: any) => {
-            let outputData = data[keyParentId || outputId]
+            let outputData = data[outputId]
             if (!outputData || fadingOut) return
 
             videoTime = outputData
         },
         DATA: (data: any) => {
-            let outputData = data[keyParentId || outputId]
+            let outputData = data[outputId]
             if (!outputData || fadingOut) return
 
             videoData = { ...outputData, duration: videoData.duration || 0 }
@@ -164,7 +154,7 @@
     // FADE OUT AUDIO
 
     $: if (fadingOut && !videoData.muted) fadeoutVideo()
-    $: if (!fadingOut && !videoData.muted && id) setVolume($volume * (($media[id]?.volume ?? 100) / 100))
+    $: if (!fadingOut && !videoData.muted && id) setVolume($volume * (($media[id]?.volume ?? currentStyle?.volume ?? 100) / 100))
     const speed = 0.01
     const margin = 0.9 // video should fade to 0 before clearing
     function fadeoutVideo() {
@@ -248,7 +238,7 @@
     .overlay {
         position: absolute;
         top: 0;
-        inset-inline-start: 0;
+        left: 0;
         width: 100%;
         height: 100%;
         background-color: transparent;

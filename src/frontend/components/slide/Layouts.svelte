@@ -1,7 +1,7 @@
 <script lang="ts">
     import { uid } from "uid"
     import { changeSlidesView } from "../../show/slides"
-    import { actions, activeEdit, activePage, activePopup, activeProject, activeShow, alertMessage, labelsDisabled, notFound, openToolsTab, projects, showsCache, slidesOptions, templates } from "../../stores"
+    import { actions, activeEdit, activePage, activePopup, activeProject, activeShow, alertMessage, labelsDisabled, openToolsTab, projects, showsCache, slidesOptions, templates } from "../../stores"
     import { triggerClickOnEnterSpace } from "../../utils/clickable"
     import { translateText } from "../../utils/language"
     import { getAccess } from "../../utils/profile"
@@ -11,6 +11,7 @@
     import { keysToID, sortByName } from "../helpers/array"
     import { duplicate } from "../helpers/clipboard"
     import { history } from "../helpers/history"
+    import { removeTemplatesFromShow } from "../helpers/show"
     import { _show } from "../helpers/shows"
     import { joinTime, secondsToTime } from "../helpers/time"
     import FloatingInputs from "../input/FloatingInputs.svelte"
@@ -19,7 +20,6 @@
     import MaterialZoom from "../inputs/MaterialZoom.svelte"
     import SelectElem from "../system/SelectElem.svelte"
     import Reference from "./Reference.svelte"
-    import { removeTemplatesFromShow } from "../helpers/show"
 
     $: showId = $activeShow?.id || ""
     $: currentShow = $showsCache[showId] || {}
@@ -93,17 +93,6 @@
 
     let edit: string | boolean = false
 
-    let loading = false
-    $: if (showId) startLoading()
-    $: if ($notFound.show?.includes(showId)) loading = false
-    function startLoading() {
-        loading = true
-        setTimeout(() => {
-            loading = false
-        }, 8000)
-    }
-    console.log("show loaded", loading)
-
     $: reference = currentShow.reference
     $: multipleLayouts = sortedLayouts.length > 1
 
@@ -111,7 +100,7 @@
 
     $: customActionId = currentShow?.settings?.customAction
     $: customAction = customActionId && $actions[customActionId] ? customActionId : ""
-    function runCustomAction(edit: boolean = false) {
+    function runCustomAction(edit = false) {
         if (edit || !customAction) {
             activePopup.set("custom_action")
             return
@@ -216,12 +205,12 @@
             {/if}
 
             {#if open || totalTime !== "0s" || referenceType !== "scripture"}
-                <MaterialButton title="popup.next_timer{totalTime !== '0s' ? ': ' + totalTime : ''}" on:click={() => activePopup.set("next_timer")}>
+                <MaterialButton title="popup.next_timer{totalTime !== '0s' ? ': ' + totalTime : ''} [Ctrl+Shift+D]" on:click={() => activePopup.set("next_timer")}>
                     <Icon size={1.1} id="clock" white={totalTime === "0s"} />
                 </MaterialButton>
             {/if}
 
-            {#if !referenceType && currentShow?.settings?.template && $templates[currentShow.settings.template]}
+            {#if (!referenceType || referenceType === "scripture" || open) && currentShow?.settings?.template && $templates[currentShow.settings.template]}
                 {#if open}
                     <div class="divider"></div>
                 {/if}
@@ -293,8 +282,9 @@
     }
 
     .notes {
-        background-color: var(--primary);
+        background-color: var(--primary-darkest);
         border-radius: var(--border-radius);
+        border-top: 1px solid var(--primary-lighter);
         /* position: absolute;bottom: 0;transform: translateY(-100%); */
         padding: 0 8px;
         min-height: 30px;

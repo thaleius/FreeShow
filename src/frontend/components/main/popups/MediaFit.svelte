@@ -1,8 +1,9 @@
 <script lang="ts">
-    import { activePopup, popupData } from "../../../stores"
+    import { activePopup, popupData, styles } from "../../../stores"
     import { mediaFitOptions } from "../../edit/values/boxes"
     import T from "../../helpers/T.svelte"
-    import Button from "../../inputs/Button.svelte"
+    import MaterialButton from "../../inputs/MaterialButton.svelte"
+    import MaterialNumberInput from "../../inputs/MaterialNumberInput.svelte"
 
     let currentValue = $popupData.active || "contain"
 
@@ -31,34 +32,60 @@
             return
         }
     }
+
+    $: styleId = $popupData.styleId
+    $: currentData = $styles[styleId]
+
+    function customUpdate(key: string, value: any) {
+        $popupData.updateCustom?.({ key, value })
+    }
+
+    let showMore = false
 </script>
+
+{#if currentValue === "blur" && styleId}
+    <MaterialButton class="popup-options {showMore ? 'active' : ''}" icon="options" iconSize={1.3} title={showMore ? "actions.close" : "create_show.more_options"} on:click={() => (showMore = !showMore)} white />
+{/if}
 
 <div class="types">
     {#each mediaFitOptions as fit}
-        {@const isActive = fit.id === currentValue}
-        <Button outline={isActive} active={isActive} on:click={() => changeFit(fit.id)} bold={false}>
+        {@const isActive = fit.value === currentValue}
+        <MaterialButton showOutline={isActive} {isActive} on:click={() => changeFit(fit.value)}>
             <svg viewBox="0 0 100 100" width="{iconSize}pt" height="{iconSize}pt">
-                {@html icons[fit.id]}
+                {@html icons[fit.value]}
             </svg>
-            <T id={fit.name} />
-        </Button>
+            <T id={fit.label} />
+        </MaterialButton>
     {/each}
 </div>
 
 <!-- object-position ? -->
+
+{#if showMore}
+    <div class="options">
+        <MaterialNumberInput label="edit.blur" value={currentData.blurAmount ?? 6} defaultValue={6} max={50} on:change={(e) => customUpdate("blurAmount", e.detail)} />
+        <MaterialNumberInput label="edit.opacity" value={(currentData.blurOpacity || 0.3) * 100} defaultValue={30} min={1} max={100} on:change={(e) => customUpdate("blurOpacity", e.detail / 100)} />
+    </div>
+{/if}
 
 <style>
     .types {
         display: flex;
         flex-wrap: wrap;
         justify-content: center;
-        gap: 20px;
-        padding: 15px 0;
+        gap: 5px;
     }
 
     .types :global(button) {
-        padding: 0.5em 0.8em;
+        font-weight: normal;
+        border: 2px solid var(--primary-lighter) !important;
+
+        padding: 0.6em;
         flex-direction: column;
         gap: 5px;
+    }
+
+    .options {
+        margin-top: 20px;
     }
 </style>

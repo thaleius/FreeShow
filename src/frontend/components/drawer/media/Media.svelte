@@ -93,7 +93,7 @@
 
     // get list of files & folders
     let prevActive: null | string = null
-    let prevTab: string = ""
+    let prevTab = ""
     $: {
         if (prevActive === "online" && active !== "online") activeView = "all"
         if (active !== "online") prevTab = ""
@@ -285,9 +285,25 @@
         }
     }
 
+    function mousepress(e: MouseEvent) {
+        if (e.button === 3) goBack()
+        else if (e.button === 4) goForward()
+    }
+
+    let lastPaths: string[] = []
+    function goForward() {
+        if (lastPaths.length) {
+            path = lastPaths.pop() || rootPath
+            lastPaths = lastPaths.filter((a) => a.includes(path))
+        }
+    }
+
     function goBack() {
         const lastSlash = path.lastIndexOf("\\") > -1 ? path.lastIndexOf("\\") : path.lastIndexOf("/")
         const folder = path.slice(0, lastSlash)
+
+        lastPaths.push(path)
+
         path = folder.length > rootPath.length ? folder : rootPath
     }
 
@@ -317,7 +333,7 @@
 <!-- TODO: download pixabay images!!! -->
 <!-- TODO: pexels images ? -->
 
-<svelte:window on:keydown={keydown} />
+<svelte:window on:keydown={keydown} on:mouseup={mousepress} />
 
 <!-- TABS -->
 

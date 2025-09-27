@@ -12,7 +12,9 @@ import {
     activeProject,
     activeTimers,
     audioPlaylists,
-    dictionary,
+    draw,
+    drawSettings,
+    drawTool,
     folders,
     gain,
     groupNumbers,
@@ -53,7 +55,7 @@ import { clearBackground } from "../output/clear"
 import { getPlainEditorText } from "../show/getTextEditor"
 import { getSlideGroups } from "../show/tools/groups"
 import { activeShow } from "./../../stores"
-import type { API_add_to_project, API_create_project, API_edit_timer, API_group, API_id_index, API_id_value, API_layout, API_media, API_rearrange, API_scripture, API_seek, API_slide_index, API_variable } from "./api"
+import type { API_add_to_project, API_create_project, API_draw_zoom, API_edit_timer, API_group, API_id_index, API_id_value, API_layout, API_media, API_output_lock, API_rearrange, API_scripture, API_seek, API_slide_index, API_variable } from "./api"
 
 // WIP combine with click() in ShowButton.svelte
 export function selectShowByName(name: string) {
@@ -107,7 +109,7 @@ export function selectProjectByIndex(index: number) {
     // select project
     const selectedProject = sortByName(removeDeleted(keysToID(get(projects))))[index]
     if (!selectedProject) {
-        newToast(get(dictionary).toast?.midi_no_project + " " + index)
+        newToast("toast.midi_no_project " + index)
         return
     }
 
@@ -131,10 +133,10 @@ export async function selectSlideByIndex(data: API_slide_index) {
     const showRef = _show(data.showId || "active")
         .layouts(data.layoutId ? [data.layoutId] : "active")
         .ref()[0]
-    if (!showRef) return newToast("$toast.midi_no_show")
+    if (!showRef) return newToast("toast.midi_no_show")
 
     const slideRef = showRef[data.index]
-    if (!slideRef) return newToast(get(dictionary).toast?.midi_no_slide + " " + data.index)
+    if (!slideRef) return newToast("toast.midi_no_slide " + data.index)
 
     outputSlide(showRef, data)
 }
@@ -159,7 +161,7 @@ export function selectSlideByName(name: string) {
     if (!sortedSlides[0]) return
 
     const showRef = getLayoutRef()
-    if (!showRef) return newToast("$toast.midi_no_show")
+    if (!showRef) return newToast("toast.midi_no_show")
 
     const index = showRef.findIndex((a) => a.id === sortedSlides[0].id)
     const slideRef = showRef[index]
@@ -191,7 +193,7 @@ export function selectOverlayByIndex(index: number) {
 
     const sortedOverlays = getSortedOverlays()
     const overlayId = sortedOverlays[index]?.id
-    if (!overlayId) return // newToast("$toast.action_no_id": action_id)
+    if (!overlayId) return // newToast("toast.action_no_id": action_id)
 
     setOutput("overlays", overlayId, false, "", true)
 }
@@ -211,8 +213,35 @@ export function selectOverlayById(id: string) {
     setOutput("overlays", id, false, "", true)
 }
 
-export function toggleLock(value?: boolean) {
-    outLocked.set(value ?? !get(outLocked))
+export function toggleLock(data: API_output_lock) {
+    if (!data.outputId) {
+        // global lock
+        outLocked.set(data.value ?? !get(outLocked))
+        return
+    }
+
+    const outputIds = data.outputId === "all" ? getActiveOutputs(get(outputs), false, true, true) : [data.outputId]
+
+    const isLocked = get(outputs)[outputIds[0]]?.active === false
+    outputIds.forEach(outputId => {
+        toggleOutputLock(outputId, typeof data.value === "boolean" ? !data.value : isLocked)
+    })
+}
+// similar to PreviewOutputs.svelte
+function toggleOutputLock(outputId: string, value: boolean) {
+    outputs.update((a) => {
+        if (!a[outputId]?.enabled) return a
+
+        a[outputId].active = value
+
+        const activeList = Object.values(a).filter((o) => !o.stageOutput && o.enabled && o.active === true)
+        if (!activeList.length) {
+            a[outputId].active = true
+            newToast("toast.one_output")
+        }
+
+        return a
+    })
 }
 
 export function moveStageConnection(id: string) {
@@ -282,9 +311,8 @@ export function changeVariable(data: API_variable) {
     if (key === "expression") {
         const stringValue = (data.value || "").toString()
         const replacedValues = stringValue.includes("{") ? getDynamicValue(stringValue) : stringValue
-        console.log(replacedValues)
+        // eslint-disable-next-line
         const calculated = new Function(`return ${replacedValues}`)()
-        console.log(calculated)
         value = Number(calculated)
         key = "number"
     } else if (data.variableAction || variable.type === "number") {
@@ -323,7 +351,7 @@ export function resetVariable(id: string) {
     updateVariable([], id, "setLog")
 }
 
-//TIMERS
+// TIMERS
 
 export function getTimersDetailed() {
     const allTimers = get(timers)
@@ -447,11 +475,11 @@ export async function addGroup(data: API_group) {
 export function setTemplate(templateId: string) {
     const showId = get(activeShow)?.id
     if (!showId) {
-        // newToast("$empty.show")
+        // newToast("empty.show")
         return
     }
     if (_show(showId).get("locked")) {
-        newToast("$show.locked")
+        newToast("show.locked")
         return
     }
 
@@ -635,6 +663,7 @@ export function sortByClosestMatch(array: any[], value: string, key = "name") {
         }
     })
 
+    // eslint-disable-next-line
     return array.sort((a, b) => b._similarityScore - a._similarityScore).map(({ _similarityScore, ...rest }) => rest)
 }
 
@@ -714,13 +743,33 @@ export async function getPDFThumbnails({ path }: API_media) {
         canvas.height = viewport.height
         canvas.width = viewport.width
 
-        await page.render({ canvasContext: context, viewport }).promise
+        await page.render({ canvas, canvasContext: context, viewport }).promise
         const base64 = canvas.toDataURL("image/jpeg")
         pages.push(base64)
     }
 
     loadingTask.destroy()
     return { path, pages }
+}
+
+// DRAW
+
+export function changeDrawZoom(data: API_draw_zoom) {
+    const size = data.size || 100
+    drawSettings.update((a) => {
+        a.zoom.size = size
+        return a
+    })
+
+    if (size === 100) {
+        draw.set(null)
+        drawTool.set("focus")
+        return
+    }
+
+    // 0-100 %
+    draw.set({ x: 1920 * ((data.x ?? 50) / 100), y: 1080 * ((data.y ?? 50) / 100) })
+    drawTool.set("zoom")
 }
 
 // ADD

@@ -7,7 +7,7 @@ import { API_ACTIONS, triggerAction } from "../components/actions/api"
 import { receivedMidi } from "../components/actions/midi"
 import { menuClick } from "../components/context/menuClick"
 import { getCurrentTimerValue } from "../components/drawer/timers/timers"
-import { getDynamicValue, _getVariableValue } from "../components/edit/scripts/itemHelpers"
+import { _getVariableValue, getDynamicValue } from "../components/edit/scripts/itemHelpers"
 import { getSlidesText } from "../components/edit/scripts/textStyle"
 import { clone, keysToID } from "../components/helpers/array"
 import { addDrawerFolder } from "../components/helpers/dropActions"
@@ -51,7 +51,6 @@ import {
     chumsConnected,
     currentOutputSettings,
     dataPath,
-    dictionary,
     driveKeys,
     events,
     folders,
@@ -69,6 +68,7 @@ import {
     shows,
     showsCache,
     showsPath,
+    special,
     spellcheck,
     stageShows,
     templates,
@@ -159,7 +159,7 @@ export const mainResponses: MainResponses = {
     [ToMain.RECEIVE_MIDI2]: (a) => receivedMidi(a),
     [Main.DELETE_SHOWS]: (a) => {
         if (!a.deleted.length) {
-            newToast("$toast.delete_shows_empty")
+            newToast("toast.delete_shows_empty")
             return
         }
 
@@ -180,14 +180,14 @@ export const mainResponses: MainResponses = {
         if (!finished) return activePopup.set(null)
 
         console.info("Backed up to:", path)
-        newToast(get(dictionary).settings?.backup_finished || "") // + ": " + path)
+        newToast("settings.backup_finished") // + ": " + path)
     },
     [ToMain.RESTORE2]: ({ finished, starting }) => {
         if (!finished) {
             if (get(activePopup) !== "initialize") activePopup.set(null)
             return
         }
-        if (starting) return newToast("$settings.restore_started")
+        if (starting) return newToast("settings.restore_started")
 
         // close opened
         activeEdit.set({ items: [] })
@@ -195,7 +195,7 @@ export const mainResponses: MainResponses = {
         activePage.set("show")
         if (get(activePopup) === "initialize") activePopup.set(null)
 
-        newToast("$settings.restore_finished")
+        newToast("settings.restore_finished")
     },
     [Main.LOCATE_MEDIA_FILE]: (data) => {
         if (!data) return
@@ -216,7 +216,7 @@ export const mainResponses: MainResponses = {
         })
 
         // sometimes when lagging the image will be "replaced" even when it exists
-        if (prevPath !== data.path) newToast("$toast.media_replaced")
+        if (prevPath !== data.path) newToast("toast.media_replaced")
     },
     [Main.MEDIA_TRACKS]: (data) => setMediaTracks(data),
     [ToMain.API_TRIGGER2]: (data) => triggerAction(data),
@@ -253,7 +253,7 @@ export const mainResponses: MainResponses = {
             const timeValue = `${currentTime < 0 ? "-" : ""}${joinTimeBig(typeof currentTime === "number" ? currentTime : 0)}`
             variableData[`timer_${labelId}`] = timeValue
             variableData[`timer_${labelId}_seconds`] = currentTime.toString()
-            const activeTimer = get(activeTimers).find((activeTimer) => activeTimer.id === id)
+            const activeTimer = get(activeTimers).find((timer) => timer.id === id)
             let status = "Stopped"
             if (activeTimer) {
                 status = activeTimer.paused ? "Paused" : "Playing"
@@ -273,7 +273,7 @@ export const mainResponses: MainResponses = {
     [ToMain.PCO_CONNECT]: (data) => {
         if (!data.success) return
         pcoConnected.set(true)
-        if (data.isFirstConnection) newToast("$main.finished")
+        if (data.isFirstConnection) newToast("main.finished")
     },
     [ToMain.PCO_PROJECTS]: async (data) => {
         if (!data.projects) return
@@ -302,7 +302,7 @@ export const mainResponses: MainResponses = {
             const existingShow = allShows.find(({ name }) => name.toLowerCase() === show.name.toLowerCase())
             // const existingShowHasContent = existingShow && (await loadShows([existingShow.id])) && getSlidesText(get(showsCache)[existingShow.id].slides)
             if (existingShow) {
-                const useLocal = await confirmCustom(`There is an existing show with the same name: ${existingShow.name}.<br><br>Would you like to use the local version instead of the one from Planning Center?`)
+                const useLocal = get(special).pcoLocalAlways ?? await confirmCustom(`There is an existing show with the same name: ${existingShow.name}.<br><br>Would you like to use the local version instead of the one from Planning Center?`)
                 if (useLocal) {
                     replaceIds[id] = existingShow.id
 
@@ -356,7 +356,7 @@ export const mainResponses: MainResponses = {
     [ToMain.CHUMS_CONNECT]: (data) => {
         if (!data.success) return
         chumsConnected.set(true)
-        if (data.isFirstConnection) newToast("$main.finished")
+        if (data.isFirstConnection) newToast("main.finished")
     },
     [ToMain.CHUMS_PROJECTS]: async (data) => {
         if (!data.projects) return
@@ -420,14 +420,10 @@ export const mainResponses: MainResponses = {
     },
     [ToMain.OPEN_FOLDER2]: (a) => {
         const receiveFOLDER = {
-            MEDIA: () => addDrawerFolder(a, "media"),
-            AUDIO: () => addDrawerFolder(a, "audio"),
-            SHOWS: () => showsPath.set(a.path),
-            DATA: () => dataPath.set(a.path),
-            DATA_SHOWS: () => {
-                dataPath.set(a.path)
-                if (a.showsPath) showsPath.set(a.showsPath)
-            }
+            MEDIA: () => addDrawerFolder(a, "media"), // menuClick
+            AUDIO: () => addDrawerFolder(a, "audio"), // menuClick
+            // SHOWS: () => showsPath.set(a.path),
+            // DATA: () => dataPath.set(a.path)
         }
 
         if (!receiveFOLDER[a.channel]) return

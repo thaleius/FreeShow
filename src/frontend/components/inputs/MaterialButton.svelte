@@ -4,11 +4,11 @@
     import Icon from "../helpers/Icon.svelte"
 
     export let variant: "contained" | "outlined" | "text" = "text"
-    export let title: string = ""
-    export let info: string = ""
-    export let icon: string = ""
-    export let iconSize: number = 1
-    export let white: boolean = false
+    export let title = ""
+    export let info = ""
+    export let icon = ""
+    export let iconSize = 1
+    export let white = false
     export let isActive = false
     export let showOutline = false
     export let disabled = false
@@ -23,7 +23,7 @@
     let ripples: { x: number; y: number; size: number; id: number }[] = []
 
     let dispatch = createEventDispatcher()
-    function click(e, double: boolean = false) {
+    function click(e, double = false) {
         if (e.target?.closest(".edit")) return
         if (e.target?.closest("button") !== button) return
 
@@ -169,22 +169,22 @@
         outline-offset: -2px;
     }
 
-    button:not(.contained):not(.isActive):hover {
+    button:not(.contained):not(.isActive):not(:disabled):hover {
         background: rgba(255, 255, 255, 0.01) !important;
     }
-    button:not(.contained):not(.isActive):active {
+    button:not(.contained):not(.isActive):not(:disabled):active {
         background: rgba(255, 255, 255, 0.04) !important;
     }
-    button:not(.contained):not(.isActive):active:hover {
+    button:not(.contained):not(.isActive):not(:disabled):active:hover {
         background: rgba(255, 255, 255, 0.06) !important;
     }
-    button.contained:hover {
+    button.contained:not(:disabled):hover {
         filter: brightness(1.05);
     }
-    button.contained:active {
+    button.contained:not(:disabled):active {
         filter: brightness(1.09);
     }
-    button.contained:active:hover {
+    button.contained:not(:disabled):active:hover {
         filter: brightness(1.13);
     }
 
@@ -220,11 +220,11 @@
         fill: var(--text) !important;
     }
 
-    button:hover {
+    button:hover:not(:disabled) {
         box-shadow: 0px 3px 6px rgba(0, 0, 0, 0.2);
     }
 
-    button:focus-visible {
+    button:focus-visible:not(:disabled) {
         outline: 2px solid var(--secondary);
         outline-offset: 2px;
     }
@@ -251,7 +251,8 @@
     }
 
     .info {
-        opacity: 0.8;
+        opacity: 0.7;
+        font-size: 0.9em;
         margin-inline-start: 2px;
         font-weight: normal;
     }

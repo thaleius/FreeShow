@@ -3,10 +3,9 @@
     import { onDestroy, onMount } from "svelte"
     import { Main } from "../../../../types/IPC/Main"
     import { sendMain } from "../../../IPC/main"
-    import { dataPath, labelsDisabled, outLocked, outputs, slidesOptions, styles } from "../../../stores"
+    import { dataPath, focusMode, labelsDisabled, outLocked, outputs, slidesOptions, styles } from "../../../stores"
     import { triggerClickOnEnterSpace } from "../../../utils/clickable"
     import { newToast, wait } from "../../../utils/common"
-    import Icon from "../../helpers/Icon.svelte"
     import { getFileName, removeExtension } from "../../helpers/media"
     import { getActiveOutputs, setOutput } from "../../helpers/output"
     import T from "../../helpers/T.svelte"
@@ -79,7 +78,7 @@
             canvas!.height = viewport.height
             canvas!.width = viewport.width
 
-            await page.render({ canvasContext: context, viewport }).promise
+            await page.render({ canvas: canvas!, canvasContext: context, viewport }).promise
 
             // display when the first page has loaded
             loading = false
@@ -87,7 +86,7 @@
     }
 
     function convertToImages() {
-        newToast("$actions.converting")
+        newToast("actions.converting")
         sendMain(Main.PDF_TO_IMAGE, { dataPath: $dataPath, filePath: path })
     }
 </script>
@@ -108,19 +107,21 @@
     {/if}
 </div>
 
-<!-- <FloatingInputs side="left">
+{#if !$focusMode}
+    <!-- <FloatingInputs side="left">
     <span style="min-width: 60px;display: flex;align-items: center;justify-content: center;opacity: 0.8;">PDF</span>
 </FloatingInputs> -->
 
-<FloatingInputs>
-    <MaterialButton icon="image" on:click={convertToImages} style="white-space: nowrap;">
-        {#if !$labelsDisabled}<T id="actions.convert_to_images" />{/if}
-    </MaterialButton>
+    <FloatingInputs>
+        <MaterialButton icon="image" on:click={convertToImages} style="white-space: nowrap;">
+            {#if !$labelsDisabled}<T id="actions.convert_to_images" />{/if}
+        </MaterialButton>
 
-    <div class="divider"></div>
+        <div class="divider"></div>
 
-    <MaterialZoom columns={$slidesOptions.columns} on:change={(e) => slidesOptions.set({ ...$slidesOptions, columns: e.detail })} />
-</FloatingInputs>
+        <MaterialZoom columns={$slidesOptions.columns} on:change={(e) => slidesOptions.set({ ...$slidesOptions, columns: e.detail })} />
+    </FloatingInputs>
+{/if}
 
 <style>
     canvas {
@@ -135,7 +136,7 @@
     .load {
         position: absolute;
         top: 0;
-        inset-inline-start: 0;
+        left: 0;
         width: 100%;
         height: 100%;
 

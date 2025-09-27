@@ -3,11 +3,12 @@ import { Main } from "../../types/IPC/Main"
 import type { Output } from "../../types/Output"
 import type { Themes } from "../../types/Settings"
 import { clone, keysToID } from "../components/helpers/array"
-import { checkWindowCapture, displayOutputs, setOutput } from "../components/helpers/output"
+import { checkWindowCapture, setOutput, toggleOutputs } from "../components/helpers/output"
 import { defaultThemes } from "../components/settings/tabs/defaultThemes"
 import { sendMain } from "../IPC/main"
 import {
     actionTags,
+    actions,
     activePopup,
     activeProject,
     alertUpdates,
@@ -18,8 +19,8 @@ import {
     autosave,
     calendarAddShow,
     categories,
-    companion,
     chumsSyncCategories,
+    companion,
     customMetadata,
     customizedIcons,
     dataPath,
@@ -28,6 +29,7 @@ import {
     drawer,
     drawerTabsData,
     driveData,
+    effects,
     effectsLibrary,
     emitters,
     formatNewShow,
@@ -45,13 +47,14 @@ import {
     mediaOptions,
     mediaTags,
     metronome,
-    actions,
     openedFolders,
+    os,
     outLocked,
     overlayCategories,
     overlays,
     playerVideos,
     ports,
+    profiles,
     projectView,
     remotePassword,
     resized,
@@ -73,9 +76,7 @@ import {
     version,
     videoMarkers,
     videosData,
-    videosTime,
-    effects,
-    profiles
+    videosTime
 } from "../stores"
 import { OUTPUT } from "./../../types/Channels"
 import type { SaveListSettings, SaveListSyncedSettings } from "./../../types/Save"
@@ -107,32 +108,12 @@ export function updateSettings(data: any) {
 
     // output
     if (data.outputs) {
-        const outputsList: (Output & { id: string })[] = keysToID(data.outputs)
-
-        // get active "ghost" key outputs
-        const activeKeyOutputs: string[] = []
-        outputsList.forEach((output) => {
-            if (output.keyOutput && !output.isKeyOutput) activeKeyOutputs.push(output.id)
-        })
-
-        // remove "ghost" key outputs (they were not removed in versions pre 0.9.6)
-        const allOutputs = get(outputs)
-        let outputsUpdated = false
-        Object.keys(allOutputs).forEach((outputId) => {
-            const output = allOutputs[outputId]
-            if (!output.isKeyOutput || activeKeyOutputs.includes(outputId)) return
-
-            delete allOutputs[outputId]
-            outputsUpdated = true
-        })
-        if (outputsUpdated) outputs.set(allOutputs)
-
         // wait until content is loaded
         setTimeout(() => {
             restartOutputs()
-            if (get(autoOutput)) setTimeout(() => displayOutputs({}, true), 500)
-            setTimeout(() => checkWindowCapture(true), 1000)
-        }, 1500)
+            if (get(autoOutput)) setTimeout(() => toggleOutputs(null, { autoStartup: true }), get(os).platform === "darwin" ? 1500 : 500)
+            setTimeout(() => checkWindowCapture(true), get(os).platform === "darwin" ? 2000 : 1000)
+        }, get(os).platform === "darwin" ? 2500 : 1500)
     }
 
     // remote
@@ -178,12 +159,6 @@ export function restartOutputs(specificId = "") {
     outputIds.forEach((id: string) => {
         let output: Output = get(outputs)[id]
         if (!output) return
-
-        // key output styling
-        if (output.isKeyOutput) {
-            const parentOutput = allOutputs.find((a) => a.keyOutput === id)
-            if (parentOutput) output = { ...parentOutput, ...output, id }
-        }
 
         // , rate: get(special).previewRate || "auto"
         send(OUTPUT, ["CREATE"], { ...output, id })

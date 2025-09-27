@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { actions, activePage, activePopup, activeShow, dictionary, groups, guideActive, outLocked, outputs, overlayTimers, playingAudio, playingMetronome, resized, slideTimers, special, styles } from "../../../stores"
+    import { actions, activePage, activePopup, activeShow, dictionary, groups, guideActive, outLocked, outputs, overlayTimers, playingAudio, playingMetronome, resized, slideTimers, special } from "../../../stores"
     import { DEFAULT_WIDTH, isDarkTheme } from "../../../utils/common"
     import { formatSearch } from "../../../utils/search"
     import { previewCtrlShortcuts, previewShortcuts } from "../../../utils/shortcuts"
@@ -12,6 +12,7 @@
     import { getFewestOutputLines, getItemWithMostLines, playNextGroup, updateOut } from "../../helpers/showActions"
     import { _show } from "../../helpers/shows"
     import { newSlideTimer } from "../../helpers/tick"
+    import { getFirstOutputIdWithAudableBackground } from "../../helpers/video"
     import Button from "../../inputs/Button.svelte"
     import ShowActions from "../ShowActions.svelte"
     import Audio from "../tools/Audio.svelte"
@@ -29,14 +30,9 @@
     let currentOutput: any = {}
     $: currentOutput = outputId ? $outputs[outputId] || {} : {}
 
-    $: backgroundOutputId = allActiveOutputs.find((id) => getLayersFromId(id).includes("background")) || outputId
+    $: allOutputsWithBackground = allActiveOutputs.filter((id) => $outputs[id]?.out?.background)
+    $: backgroundOutputId = getFirstOutputIdWithAudableBackground(allOutputsWithBackground) || allOutputsWithBackground[0] || outputId
     $: currentBgOutput = backgroundOutputId ? $outputs[backgroundOutputId] || null : null
-
-    function getLayersFromId(id: string) {
-        const layers = $styles[$outputs[id]?.style || ""]?.layers
-        if (Array.isArray(layers)) return layers
-        return ["background"]
-    }
 
     let numberKeyTimeout: NodeJS.Timeout | null = null
     let previousNumberKey = ""
@@ -206,7 +202,7 @@
     let timer: any = {}
     $: timer = outputId && $slideTimers[outputId] ? $slideTimers[outputId] : {}
     $: Object.entries($outputs).forEach(([id, output]) => {
-        if ((Object.keys($outputs)?.length > 1 && !output.enabled) || output.keyOutput || output.stageOutput) return
+        if ((Object.keys($outputs)?.length > 1 && !output.enabled) || output.stageOutput) return
         if (!output.out?.transition || $slideTimers[id]?.timer) return
 
         const data = output.out.transition
@@ -246,7 +242,7 @@
 
 <div id="previewArea" class="main">
     {#if enablePreview}
-        <PreviewOutputs bind:currentOutputId={outputId} />
+        <PreviewOutputs />
 
         <div class="top">
             <Button class="hide" on:click={() => (enablePreview = false)} style="z-index: 2;" title={$dictionary.preview?._hide_preview} center>

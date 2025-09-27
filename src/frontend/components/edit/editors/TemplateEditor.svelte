@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onDestroy } from "svelte"
     import type { ItemType } from "../../../../types/Show"
-    import { activeEdit, templates } from "../../../stores"
+    import { activeEdit, outputs, styles, templates } from "../../../stores"
     import TemplateSlide from "../../drawer/pages/TemplateSlide.svelte"
     import Icon from "../../helpers/Icon.svelte"
     import T from "../../helpers/T.svelte"
@@ -14,6 +14,9 @@
     import Center from "../../system/Center.svelte"
     import { addItem } from "../scripts/itemHelpers"
     import { translateText } from "../../../utils/language"
+    import { getStyleResolution } from "../../slide/getStyleResolution"
+    import { getResolution } from "../../helpers/output"
+    import DropArea from "../../system/DropArea.svelte"
 
     const update = () => (Slide = clone($templates[currentId]))
     $: currentId = $activeEdit.id!
@@ -81,6 +84,9 @@
     const shortcutItems: { id: ItemType; icon?: string }[] = [{ id: "text" }, { id: "media", icon: "image" }, { id: "timer" }]
 
     // const ignoreDefault = ["metadata", "message", "double"]
+
+    $: resolution = getResolution(null, { $outputs, $styles })
+    $: widthOrHeight = getStyleResolution(resolution, width, height, "fit", { zoom })
 </script>
 
 {#if Slide?.isDefault}
@@ -93,7 +99,9 @@
     <div class="parent" class:noOverflow={zoom >= 1} bind:this={scrollElem} bind:offsetWidth={width} bind:offsetHeight={height}>
         <!--  && (!Slide.isDefault || ignoreDefault.includes(currentId)) -->
         {#if Slide}
-            <TemplateSlide bind:newStyles templateId={currentId} template={Slide} edit {width} {height} {zoom} bind:ratio />
+            <DropArea id="edit" file>
+                <TemplateSlide bind:newStyles templateId={currentId} template={Slide} edit {width} {height} {zoom} bind:ratio />
+            </DropArea>
         {:else}
             <Center size={2} faded>
                 <T id="empty.slide" />
@@ -101,13 +109,15 @@
         {/if}
     </div>
 
-    <FloatingInputs side="center">
-        {#each shortcutItems as item}
-            <MaterialButton title="settings.add: items.{item.id}" on:click={() => addItem(item.id, null, {}, translateText("example.text"))}>
-                <Icon id={item.icon || item.id} size={1.3} white />
-            </MaterialButton>
-        {/each}
-    </FloatingInputs>
+    {#if !widthOrHeight.includes("height")}
+        <FloatingInputs side="center">
+            {#each shortcutItems as item}
+                <MaterialButton title="settings.add: items.{item.id}" on:click={() => addItem(item.id, null, {}, translateText("example.text"))}>
+                    <Icon id={item.icon || item.id} size={1.3} white />
+                </MaterialButton>
+            {/each}
+        </FloatingInputs>
+    {/if}
 
     <FloatingInputs>
         <MaterialZoom columns={zoom} min={0.2} max={4} defaultValue={1} addValue={0.1} on:change={updateZoom} />

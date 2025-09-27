@@ -1,6 +1,6 @@
 <script lang="ts">
     import type { MediaStyle } from "../../../../types/Main"
-    import { activeShow, dictionary, media, outLocked, outputs, styles } from "../../../stores"
+    import { activeShow, media, outLocked, outputs, styles } from "../../../stores"
     import Image from "../../drawer/media/Image.svelte"
     import { downloadOnlineMedia, getMediaStyle } from "../../helpers/media"
     import { getActiveOutputs, getCurrentStyle, setOutput } from "../../helpers/output"
@@ -11,7 +11,7 @@
 
     $: if (show?.id.includes("http")) download()
     async function download() {
-        show!.id = await downloadOnlineMedia(show!.id)
+        show.id = await downloadOnlineMedia(show.id)
     }
 
     $: outputId = getActiveOutputs($outputs)[0]
@@ -22,7 +22,7 @@
     $: if (show) mediaStyle = getMediaStyle($media[show.id], currentStyle)
 
     $: mediaStyleString = `width: 100%;height: 100%;object-fit: ${mediaStyle.fit === "blur" ? "contain" : mediaStyle.fit || "contain"};filter: ${mediaStyle.filter || ""};transform: scale(${mediaStyle.flipped ? "-1" : "1"}, ${mediaStyle.flippedY ? "-1" : "1"});`
-    $: mediaStyleBlurString = `position: absolute;filter: ${mediaStyle.filter || ""} blur(6px) opacity(0.3);object-fit: cover;width: 100%;height: 100%;transform: scale(${mediaStyle.flipped ? "-1" : "1"}, ${mediaStyle.flippedY ? "-1" : "1"});`
+    $: mediaStyleBlurString = `position: absolute;filter: ${mediaStyle.filter || ""} blur(${mediaStyle.fitOptions?.blurAmount ?? 6}px) opacity(${mediaStyle.fitOptions?.blurOpacity || 0.3});object-fit: cover;width: 100%;height: 100%;transform: scale(${mediaStyle.flipped ? "-1" : "1"}, ${mediaStyle.flippedY ? "-1" : "1"});`
 </script>
 
 {#if show}
@@ -38,7 +38,6 @@
                     on:click={() => {
                         if (!$outLocked) setOutput("background", { path: show?.id, ...mediaStyle })
                     }}
-                    title={$dictionary.media?.play}
                 >
                     {#if mediaStyle.fit === "blur"}
                         <Image style={mediaStyleBlurString} src={show.id} alt="" />

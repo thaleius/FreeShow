@@ -2,7 +2,7 @@
 // This is the electron entry point
 
 import type { Rectangle } from "electron"
-import { BrowserWindow, Menu, app, ipcMain, screen } from "electron"
+import { BrowserWindow, Menu, app, ipcMain, powerSaveBlocker, screen } from "electron"
 import { AUDIO, CLOUD, EXPORT, MAIN, NDI, OUTPUT, RECORDER, STARTUP } from "../types/Channels"
 import { Main } from "../types/IPC/Main"
 import type { Dictionary } from "../types/Settings"
@@ -65,8 +65,19 @@ if (disableHWA !== false) {
 if (RECORD_STARTUP_TIME) console.time("Full startup")
 app.on("ready", startApp)
 
-function startApp() {
+export let powerSaveBlockerId: number | null = null
+async function startApp() {
     if (RECORD_STARTUP_TIME) console.time("Initial")
+
+    // Wait for Widevine CDM components to be ready (required for castlabs electron)
+    try {
+        const { components } = require("electron")
+        await components.whenReady()
+        console.info("Widevine CDM components ready")
+    } catch (err) {
+        console.warn("Failed to initialize Widevine CDM components:", err)
+    }
+
     setTimeout(createLoading)
 
     // Start these heavy operations in parallel, not blocking main window creation
@@ -86,6 +97,9 @@ function startApp() {
     if (RECORD_STARTUP_TIME) console.timeEnd("Initial")
 
     createMain()
+
+    // prevent display sleeping
+    powerSaveBlockerId = powerSaveBlocker.start('prevent-display-sleep')
 }
 
 // ----- LOADING WINDOW -----
@@ -100,7 +114,7 @@ function createLoading() {
 // ----- MAIN WINDOW -----
 
 export let mainWindow: BrowserWindow | null = null
-const MIN_WINDOW_SIZE = 200
+const MIN_WINDOW_SIZE = 400
 const DEFAULT_WINDOW_SIZE = { width: 800, height: 600 }
 function createMain() {
     if (RECORD_STARTUP_TIME) console.time("Main window")

@@ -5,7 +5,7 @@
     import type { Item, Transition } from "../../../types/Show"
     import { currentWindow, outputs, overlays, showsCache, styles, templates, variables } from "../../stores"
     import { send } from "../../utils/request"
-    import autosize, { AutosizeTypes } from "../edit/scripts/autosize"
+    import autosize from "../edit/scripts/autosize"
     import { clone } from "../helpers/array"
     import { getActiveOutputs, getOutputResolution, percentageStylePos } from "../helpers/output"
     import { getNumberVariables } from "../helpers/showActions"
@@ -18,6 +18,7 @@
     export let itemIndex = -1
     export let slideIndex = 0
     export let preview = false
+    export let isTemplatePreview = false
     export let mirror = true
     export let isMirrorItem = false
     export let ratio = 1
@@ -167,15 +168,23 @@
         }, 200)
         previousItem = newItem
 
-        let type = (item?.textFit || "shrinkToFit") as AutosizeTypes
+        let type = item?.textFit || "shrinkToFit"
 
         let defaultFontSize
         let maxFontSize
 
+        const isTextItem = (item.type || "text") === "text"
+
         if (isStage) {
-            type = "growToFit"
+            if (stageItem?.type !== "text") type = stageItem?.textFit || "growToFit"
+
+            // const textItem = isTextItem ? item?.lines?.[0]?.text || [] : stageItem
+            let itemFontSize = Number(getStyles(stageItem?.style, true)?.["font-size"] || "") || 100
+
+            defaultFontSize = itemFontSize
+            if (type === "growToFit" && itemFontSize !== 100) maxFontSize = itemFontSize
         } else {
-            if ((item.type || "text") === "text" && !item.auto) {
+            if (isTextItem && !item.auto) {
                 fontSize = 0
                 return
             }
@@ -191,14 +200,14 @@
             customTypeRatio = verseItemSize / 100 || 1
 
             defaultFontSize = itemFontSize
-            if (type === "growToFit") maxFontSize = itemFontSize
+            if (type === "growToFit" && isTextItem) maxFontSize = itemFontSize
         }
 
         let elem = itemElem
         if (!elem) return
 
         let textQuery = ""
-        if ((item.type || "text") === "text") {
+        if (isTextItem) {
             elem = elem.querySelector(".align") as HTMLElement
             textQuery = ".lines .break span"
         } else {
@@ -352,7 +361,7 @@
             on:updateAutoSize={calculateAutosize}
         />
     {:else}
-        <SlideItems {item} {slideIndex} {preview} {mirror} {isMirrorItem} {ratio} {disableListTransition} {smallFontSize} {ref} {fontSize} />
+        <SlideItems {item} {slideIndex} {preview} {isTemplatePreview} {mirror} {isMirrorItem} {ratio} {disableListTransition} {smallFontSize} {ref} {fontSize} {outputId} />
     {/if}
 </div>
 
@@ -368,7 +377,7 @@
         /* filter & dynamic CSS variable transition */
         transition:
             filter 500ms,
-            backdrop-filter 500ms,
+            /* not supported */ backdrop-filter 500ms,
             all 0.1s;
     }
     .item.isStage {

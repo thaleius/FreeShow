@@ -1,5 +1,5 @@
 import { get } from "svelte/store"
-import type { Condition, Item, ItemType, Slide } from "../../../../types/Show"
+import type { Condition, ConditionValue, Item, ItemType, Slide } from "../../../../types/Show"
 import type { StageItem } from "../../../../types/Stage"
 import { activeEdit, activeShow, activeStage, activeTimers, allOutputs, outputs, outputSlideCache, overlays, refreshEditSlide, showsCache, stageShows, templates, timers, variables } from "../../../stores"
 import { addSlideAction } from "../../actions/actions"
@@ -11,21 +11,22 @@ import { getLayoutRef } from "../../helpers/show"
 import { dynamicValueText, getVariableValue, replaceDynamicValues } from "../../helpers/showActions"
 import { _show } from "../../helpers/shows"
 import { getStyles, removeText } from "../../helpers/style"
-import { boxes } from "../values/boxes"
+import { itemBoxes } from "../values/boxes"
 import { getItemText } from "./textStyle"
 
-export const DEFAULT_ITEM_STYLE = "top:120px;inset-inline-start:50px;height:840px;width:1820px;"
+export const DEFAULT_ITEM_STYLE = "top:120px;left:50px;height:840px;width:1820px;"
 
 function getDefaultStyles(type: ItemType, templateItems: Item[] | null = null) {
     // Get position styles from template or use default from boxes.ts
     const positionStyle = templateItems?.find((a) => (a.type || "text") === type)?.style || DEFAULT_ITEM_STYLE
 
     // Get default styles from boxes configuration
-    const boxDefaults = boxes[type]?.edit?.font || []
+    const boxDefaults = itemBoxes[type]?.sections?.font?.inputs?.flat() || []
     let styleString = positionStyle
 
     // Add default font styles if they exist
     boxDefaults.forEach((def) => {
+        if (def.type === "toggle" || def.type === "radio") return
         if (def.key && def.value) {
             styleString += `${def.key}:${def.value};`
         }
@@ -88,8 +89,8 @@ export function addItem(type: ItemType, id: string | null = null, options: any =
         const size = 300
         let style = getStyles(newData.style)
         const top: string = Number(removeText(style.top)) + Number(removeText(style.height)) / 2 - size / 2 + "px"
-        const insetInlineStart: string = Number(removeText(style.left)) + Number(removeText(style.width)) / 2 - size / 2 + "px"
-        style = { ...style, top, insetInlineStart, width: size + "px", height: size + "px", color: options.color }
+        const left: string = Number(removeText(style.left)) + Number(removeText(style.width)) / 2 - size / 2 + "px"
+        style = { ...style, top, left, width: size + "px", height: size + "px", color: options.color }
         let styleString = ""
         Object.entries(style).forEach(([key, value]) => {
             styleString += `${key}: ${value};`
@@ -243,9 +244,9 @@ export function updateSortedStageItems() {
     })
 }
 
-export function shouldItemBeShown(item: Item, allItems: Item[] = [], { outputId, type }: any = { type: "default" }, _updater: any = null) {
+export function shouldItemBeShown(item: Item, allItems: Item[] = [], { outputId, type }: any = { type: "default" }, _updater: any = null, preview = false) {
     // check bindings
-    if (item.bindings?.length && !item.bindings.includes(outputId)) return false
+    if (!preview && item.bindings?.length && !item.bindings.includes(outputId)) return false
 
     if (type === "stage") allItems = getTempItems(item, allItems)
 
@@ -285,55 +286,59 @@ function getTempItems(item: Item, allItems: Item[]) {
     }
 }
 
-function isConditionMet(condition: Condition | undefined, itemsText: string, type: "default" | "stage") {
+export function isConditionMet(condition: Condition | undefined, itemsText: string, type: "default" | "stage", _updater: any = null) {
     if (!condition) return true
 
-    const conditionValues: boolean[] = condition.values.map((cVal) => {
-        const element = cVal.element || "text"
-        let elementId = cVal.elementId || ""
-        if (element === "timer" && !elementId) elementId = getFirstActiveTimer()
+    if (!Array.isArray(condition)) {
+        condition = (condition as any)?.values?.length ? [[[(condition as any).values]]] : []
+    }
 
-        let operator = cVal.operator || "is"
-        if (element === "timer") operator = cVal.operator || "isRunning"
-
-        const data = cVal.data || "value"
-        let dataValue: string | number = cVal.value ?? ""
-        if (data === "seconds" || (element === "timer" && operator !== "isRunning")) dataValue = (cVal.seconds || 0).toString()
-
-        let value = ""
-        if (element === "text") value = itemsText
-        else if (element === "timer") value = getTimerValue(elementId)
-        else if (element === "variable") value = _getVariableValue(elementId)
-        else if (element === "dynamicValue") value = getDynamicValue(elementId, type)
-
-        if (operator === "is") {
-            return value === dataValue
-        } else if (operator === "isNot") {
-            return value !== dataValue
-        } else if (operator === "has") {
-            return value.includes(dataValue)
-        } else if (operator === "hasNot") {
-            return !value.includes(dataValue)
-        } else if (operator === "isRunning") {
-            if (element === "timer") return isTimerRunning(elementId)
-        } else if (operator === "isAbove") {
-            return Number(value) > Number(dataValue)
-        } else if (operator === "isBelow") {
-            return Number(value) < Number(dataValue)
-        }
-
-        return true
+    // outerOr
+    const conditionMet = !!condition.find(outerAnd => {
+        return outerAnd.every(innerOr => {
+            return !!innerOr.find(innerAnd => {
+                return innerAnd.every(content => {
+                    return checkConditionValue(content, itemsText, type)
+                })
+            })
+        })
     })
 
-    const scenario = condition.scenario || "all"
-    const filteredValues = [...new Set(conditionValues)]
+    return conditionMet
+}
 
-    if (scenario === "all") {
-        return filteredValues.length === 1 && filteredValues[0] === true
-    } else if (scenario === "some") {
-        return filteredValues.includes(true)
-    } else if (scenario === "none") {
-        return filteredValues.length === 1 && filteredValues[0] === false
+export function checkConditionValue(cVal: ConditionValue, itemsText: string, type: "default" | "stage", _updater: any = null) {
+    const element = cVal.element || "text"
+    let elementId = cVal.elementId || ""
+    if (element === "timer" && !elementId) elementId = getFirstActiveTimer()
+
+    let operator = cVal.operator || "is"
+    if (element === "timer") operator = cVal.operator || "isRunning"
+
+    const data = cVal.data || "value"
+    let dataValue: string | number = cVal.value ?? ""
+    if (data === "seconds" || (element === "timer" && operator !== "isRunning")) dataValue = (cVal.seconds || 0).toString()
+
+    let value = ""
+    if (element === "text") value = itemsText
+    else if (element === "timer") value = getTimerValue(elementId)
+    else if (element === "variable") value = _getVariableValue(elementId)
+    else if (element === "dynamicValue") value = getDynamicValue(elementId, type)
+
+    if (operator === "is") {
+        return value === dataValue
+    } else if (operator === "isNot") {
+        return value !== dataValue
+    } else if (operator === "has") {
+        return value.includes(dataValue)
+    } else if (operator === "hasNot") {
+        return !value.includes(dataValue)
+    } else if (operator === "isRunning") {
+        if (element === "timer") return isTimerRunning(elementId)
+    } else if (operator === "isAbove") {
+        return Number(value) > Number(dataValue)
+    } else if (operator === "isBelow") {
+        return Number(value) < Number(dataValue)
     }
 
     return true

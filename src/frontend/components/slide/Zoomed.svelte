@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { onMount, onDestroy } from "svelte"
     import type { Cropping, Resolution } from "../../../types/Settings"
     import { draw, outputs, styles } from "../../stores"
     import { DEFAULT_BOUNDS, getActiveOutputs, getOutputResolution, getResolution } from "../helpers/output"
@@ -40,6 +41,27 @@
 
     let slideWidth = 0
     let slideHeight = 0
+    let slideElem: HTMLDivElement | null = null
+
+    let resizeObserver: ResizeObserver | null = null
+    onMount(() => {
+        if (!slideElem) return
+
+        resizeObserver = new ResizeObserver((entries) => {
+            for (const entry of entries) {
+                const { width, height } = entry.contentRect
+                if (slideWidth !== width || slideHeight !== height) {
+                    slideWidth = width
+                    slideHeight = height
+                }
+            }
+        })
+        resizeObserver.observe(slideElem)
+    })
+    onDestroy(() => {
+        if (resizeObserver && slideElem) resizeObserver.unobserve(slideElem)
+    })
+
     export let ratio = 1
     $: shouldUseHeightRatio = outputRes.width < outputRes.height && stylesRatio.width > stylesRatio.height && styleAspectRatio === defaultRatio
     $: ratio = Math.max(0.01, shouldUseHeightRatio ? slideHeight / outputRes.height : slideWidth / outputRes.width) / customZoom
@@ -70,15 +92,27 @@
         return style
     }
 
-    // $: zoomTransform = 50 * (drawZoom - 1) * -1
-
     $: alignStyle = align ? ($$props.style?.includes("width") ? `align-items: ${align};` : `justify-content: ${align};`) : ""
+
+    // DRAW
+
+    $: drawX = $draw ? ($draw.x / outputRes.width - 0.5) * (drawZoom - 1) * -1 * 100 : 0
+    $: drawY = $draw ? ($draw.y / outputRes.height - 0.5) * (drawZoom - 1) * -1 * 100 : 0
+
+    // base draw on 1920x1080 or %, and not on the output resolution
+    // $: originalAspectRatio = 1920 / 1080
+    // $: currentAspectRatio = resolution.width / resolution.height
+    // $: isTaller = originalAspectRatio > currentAspectRatio
+    // $: isWider = originalAspectRatio < currentAspectRatio
+    // $: widthRatio = isWider ? originalAspectRatio / currentAspectRatio : 1
+    // $: heightRatio = isTaller ? currentAspectRatio / originalAspectRatio : 1 // ?
+    // $: drawX = $draw ? (($draw.x / 1920 - 0.5) * (drawZoom - 1) * -1 * 100) * widthRatio : 0
+    // $: drawY = $draw ? (($draw.y / 1080 - 0.5) * (drawZoom - 1) * -1 * 100) * heightRatio : 0
 </script>
 
 <div id={outputId} class:center class:disabled class="zoomed" style="width: 100%;height: 100%;{outline ? `border: 2px solid ${outline};` : ''}{alignStyle}" bind:offsetWidth={elemWidth} bind:offsetHeight={elemHeight}>
     <div
-        bind:offsetWidth={slideWidth}
-        bind:offsetHeight={slideHeight}
+        bind:this={slideElem}
         class="slide"
         class:landscape={resolution.width / resolution.height > elemWidth / elemHeight}
         class:hideOverflow
@@ -90,14 +124,7 @@
         style="{$$props.style || ''}background-color: {background};transition: {backgroundDuration}ms background-color;{aspectRatio ? `aspect-ratio: ${resolution.width}/${resolution.height};${croppedStyle}` : ''};"
     >
         {#if zoom}
-            <span
-                class="zoom"
-                style="zoom: {ratio};{drawZoom === 1
-                    ? ''
-                    : `transform: scale(${drawZoom});position: absolute;width: 100%;height: 100%;` +
-                      ($draw ? `inset-inline-start: ${($draw.x / outputRes.width - 0.5) * (drawZoom - 1) * -1 * 100}%;top: ${($draw.y / outputRes.height - 0.5) * (drawZoom - 1) * -1 * 100}%;` : '')}"
-            >
-                <!-- ($draw ? `left: calc(${zoomTransform}% + ${($draw.x / 1920 - 0.5) * -2 * 100}%);top: calc(${zoomTransform}% + ${($draw.y / 1080 - 0.5) * -2 * 100}%);` : `left: ${zoomTransform}%;top: ${zoomTransform}%;`)}" -->
+            <span class="zoom" style="zoom: {ratio};{drawZoom === 1 ? '' : `transform: scale(${drawZoom});position: absolute;width: 100%;height: 100%;` + ($draw ? `inset-inline-start: ${drawX}%;top: ${drawY}%;` : '')}">
                 <slot {ratio} />
             </span>
         {:else}

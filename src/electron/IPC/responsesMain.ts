@@ -14,7 +14,7 @@ import { checkIfMediaDownloaded, downloadLessonsMedia, downloadMedia } from "../
 import { importShow } from "../data/import"
 import { save } from "../data/save"
 import { config, error_log, getStore, stores, updateDataPath, userDataPath } from "../data/store"
-import { captureSlide, getThumbnail, getThumbnailFolderPath, pdfToImage, saveImage } from "../data/thumbnails"
+import { captureSlide, doesMediaExist, getThumbnail, getThumbnailFolderPath, pdfToImage, saveImage } from "../data/thumbnails"
 import { OutputHelper } from "../output/OutputHelper"
 import { getPresentationApplications, presentationControl, startSlideshow } from "../output/ppt/presentation"
 import { pcoDisconnect, pcoStartupLoad } from "../planningcenter/connect"
@@ -40,7 +40,7 @@ import {
     loadFile,
     loadShows,
     locateMediaFile,
-    openSystemFolder,
+    openInSystem,
     readExifData,
     readFile,
     selectFiles,
@@ -53,6 +53,7 @@ import { closeMidiInPorts, getMidiInputs, getMidiOutputs, receiveMidi, sendMidi 
 import { deleteShows, deleteShowsNotIndexed, getAllShows, getEmptyShows, refreshAllShows } from "../utils/shows"
 import { correctSpelling } from "../utils/spellcheck"
 import checkForUpdates from "../utils/updater"
+import { libreConvert } from "../output/ppt/libreConverter"
 
 export const mainResponses: MainResponses = {
     // DEV
@@ -105,10 +106,10 @@ export const mainResponses: MainResponses = {
     [Main.SHOWS_PATH]: () => getDocumentsFolder(),
     [Main.DATA_PATH]: () => getDocumentsFolder(null, ""),
     [Main.LOG_ERROR]: (data) => logError(data),
-    [Main.OPEN_LOG]: () => openSystemFolder(error_log.path),
-    [Main.OPEN_CACHE]: () => openSystemFolder(getThumbnailFolderPath()),
-    [Main.OPEN_APPDATA]: () => openSystemFolder(path.dirname(config.path)),
-    [Main.OPEN_FOLDER_PATH]: (folderPath) => openSystemFolder(folderPath),
+    [Main.OPEN_LOG]: () => openInSystem(error_log.path),
+    [Main.OPEN_CACHE]: () => openInSystem(getThumbnailFolderPath(), true),
+    [Main.OPEN_APPDATA]: () => openInSystem(path.dirname(config.path), true),
+    [Main.OPEN_FOLDER_PATH]: (folderPath) => openInSystem(folderPath, true),
     [Main.GET_STORE_VALUE]: (data) => getStoreValue(data),
     [Main.SET_STORE_VALUE]: (data) => setStoreValue(data),
     // SHOWS
@@ -123,6 +124,7 @@ export const mainResponses: MainResponses = {
     [Main.GET_DISPLAYS]: () => screen.getAllDisplays(),
     [Main.OUTPUT]: (_, e) => (e.sender.id === getMainWindow()?.webContents.id ? "false" : "true"),
     // MEDIA
+    [Main.DOES_MEDIA_EXIST]: (data) => doesMediaExist(data),
     [Main.GET_THUMBNAIL]: (data) => getThumbnail(data),
     [Main.SAVE_IMAGE]: (data) => saveImage(data),
     [Main.PDF_TO_IMAGE]: (data) => pdfToImage(data),
@@ -140,6 +142,7 @@ export const mainResponses: MainResponses = {
     [Main.ACCESS_MICROPHONE_PERMISSION]: () => getPermission("microphone"),
     [Main.ACCESS_SCREEN_PERMISSION]: () => getPermission("screen"),
     // PPT
+    [Main.LIBREOFFICE_CONVERT]: (data) => libreConvert(data),
     [Main.SLIDESHOW_GET_APPS]: () => getPresentationApplications(),
     [Main.START_SLIDESHOW]: (data) => startSlideshow(data),
     [Main.PRESENTATION_CONTROL]: (data) => presentationControl(data),
@@ -165,7 +168,7 @@ export const mainResponses: MainResponses = {
     [Main.SEARCH_LYRICS]: (data) => searchLyrics(data),
     // FILES
     [Main.RESTORE]: (data) => restoreFiles(data),
-    [Main.SYSTEM_OPEN]: (data) => openSystemFolder(data),
+    [Main.SYSTEM_OPEN]: (data) => openInSystem(data),
     [Main.DOES_PATH_EXIST]: (data) => {
         let configPath = data.path
         if (configPath === "data_config") configPath = path.join(data.dataPath, dataFolderNames.userData)
@@ -316,7 +319,7 @@ export function saveRecording(_: Electron.IpcMainEvent, msg: any) {
     writeFile(filePath, buffer)
 
     if (!systemOpened) {
-        openSystemFolder(folder)
+        openInSystem(folder)
         systemOpened = true
     }
 }

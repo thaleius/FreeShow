@@ -1,6 +1,7 @@
 <script lang="ts">
-    import { activeFocus, activePage, activePopup, alertMessage, cachedShowsData, focusMode, lessonsLoaded, notFound, outLocked, outputs, outputSlideCache, showsCache, slidesOptions, special } from "../../stores"
-    import { wait } from "../../utils/common"
+    import { onMount } from "svelte"
+    import { activeFocus, activePage, activePopup, alertMessage, cachedShowsData, categories, focusMode, lessonsLoaded, notFound, outLocked, outputs, outputSlideCache, showsCache, slidesOptions, special, templates } from "../../stores"
+    import { hasNewerUpdate, wait } from "../../utils/common"
     import { getAccess } from "../../utils/profile"
     import { videoExtensions } from "../../values/extensions"
     import { customActionActivation } from "../actions/actions"
@@ -19,6 +20,7 @@
     import Autoscroll from "../system/Autoscroll.svelte"
     import Center from "../system/Center.svelte"
     import DropArea from "../system/DropArea.svelte"
+    import { loadCustomFonts } from "../helpers/fonts"
 
     export let showId: string
     export let layout = ""
@@ -27,6 +29,11 @@
     $: currentShow = $showsCache[showId]
     $: activeLayout = layout || $showsCache[showId]?.settings?.activeLayout
     $: layoutSlides = currentShow ? getCachedShow(showId, activeLayout, $cachedShowsData)?.layout || [] : []
+
+    onMount(() => {
+        // custom fonts
+        if (currentShow?.settings?.customFonts) loadCustomFonts(currentShow.settings.customFonts)
+    })
 
     // fix broken media
     $: if (showId) fixBrokenMedia()
@@ -47,12 +54,16 @@
 
     let scrollElem: HTMLElement | undefined
     let offset = -1
-    $: {
+    $: updateOffset({ $outputs })
+    async function updateOffset(_updater: any) {
+        if (!loaded || !scrollElem) return
+        if (await hasNewerUpdate("SHOWS_SCROLL_OFFSET", 50)) return
+
         let output = $outputs[activeOutputs[0]] || {}
-        if (loaded && scrollElem && showId === output.out?.slide?.id && activeLayout === output.out?.slide?.layout) {
+        if (showId === output.out?.slide?.id && activeLayout === output.out?.slide?.layout) {
             let columns = mode === "grid" ? ($slidesOptions.columns > 2 ? $slidesOptions.columns : 0) : 1
             let index = Math.max(0, (output.out.slide.index || 0) - columns)
-            offset = ((scrollElem.querySelector(".grid")?.children[index] as HTMLElement)?.offsetTop || 5) - 5
+            offset = ((scrollElem?.querySelector(".grid")?.children[index] as HTMLElement)?.offsetTop || 5) - 5
         }
     }
 
@@ -147,6 +158,9 @@
         if (!loaded) return
 
         let showTemplate = currentShow?.settings?.template || ""
+        // get category template if no show template
+        if (!showTemplate || showTemplate === "default" || !$templates[showTemplate]) showTemplate = $categories[currentShow.category || ""]?.template || ""
+
         history({ id: "TEMPLATE", save: false, newData: { id: showTemplate }, location: { page: "show" } })
     }
 
@@ -182,15 +196,16 @@
 
         function capitalize(value: string) {
             $special.capitalize_words.split(",").forEach((word) => {
-                let newWord = word.trim().toLowerCase()
+                let newWord = word.trim()
                 if (!newWord.length) return
 
-                const regEx = new RegExp(`\\b${newWord}\\b`, "gi")
+                // match whole words, respecting Unicode letters (accented characters)
+                const regEx = new RegExp(`(?<!\\p{L})${newWord.toLowerCase()}(?!\\p{L})`, "giu")
                 value = value.replace(regEx, (match) => {
                     // always capitalize: newWord.charAt(0).toUpperCase() + newWord.slice(1)
                     // use the input case styling (meaning all uppercase/lowercase also works)
                     // but don't change anything if the text is already fully uppercase
-                    return match === match.toUpperCase() ? match : word.trim()
+                    return match === match.toUpperCase() ? match : newWord
                 })
             })
 
@@ -414,9 +429,11 @@
     let loading = false
     $: if (showId) startLoading()
     $: if ($notFound.show?.includes(showId)) loading = false
+    let loadingTimeout: NodeJS.Timeout | null = null
     function startLoading() {
         loading = true
-        setTimeout(() => {
+        if (loadingTimeout) clearTimeout(loadingTimeout)
+        loadingTimeout = setTimeout(() => {
             loading = false
         }, 8000)
     }

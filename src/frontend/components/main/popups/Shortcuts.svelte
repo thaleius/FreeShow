@@ -3,6 +3,7 @@
     import T from "../../helpers/T.svelte"
 
     const ctrl = $os.platform === "darwin" ? "cmd" : "ctrl"
+    const alt = $os.platform === "darwin" ? "option" : "alt"
 
     const shortcuts = {
         "actions.selectAll": `${ctrl} + a`,
@@ -35,16 +36,16 @@
         "actions.undo": `${ctrl} + z`,
         "popup.shortcuts": `${ctrl} + ?`,
 
-        shift: "SEPERATOR",
+        shift: "SEPARATOR",
 
         "actions.focus_mode": `${ctrl} + shift + f`,
         "show.change_view": `${ctrl} + shift + v`,
 
-        alt: "SEPERATOR",
+        alt: "SEPARATOR",
 
-        "Show Import from Clipboard": `${ctrl} + alt + i`,
+        "Show Import from Clipboard": `${ctrl} + ${alt} + i`,
 
-        clear: "SEPERATOR",
+        clear: "SEPARATOR",
 
         "actions.remove_selection": "esc",
         "clear.all": "esc",
@@ -63,9 +64,9 @@
         // "main.quick_search": "f8",
         "actions.fullscreen": "f11",
 
-        // presenterKeys: "SEPERATOR",
+        // presenterKeys: "SEPARATOR",
 
-        num: "SEPERATOR",
+        num: "SEPARATOR",
 
         // arrow keys, space, tabs, enter, ...
         "actions.change_tab": "num",
@@ -79,7 +80,7 @@
 
 <main>
     {#each Object.entries(shortcuts) as [id, shortcut]}
-        {#if shortcut === "SEPERATOR"}
+        {#if shortcut === "SEPARATOR"}
             <hr />
         {:else}
             <div>
@@ -126,7 +127,8 @@
 
     .shortcut {
         background-color: var(--primary-darker);
-        border: 3px solid var(--primary-lighter);
+        border: 2px solid var(--primary-lighter);
+        border-radius: 3px;
 
         font-size: 0.9em;
         text-align: center;

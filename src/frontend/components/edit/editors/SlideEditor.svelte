@@ -4,13 +4,14 @@
     import type { ItemType } from "../../../../types/Show"
     import { activeEdit, activePopup, activeShow, activeTriggerFunction, alertMessage, driveData, focusMode, labelsDisabled, media, outputs, overlays, refreshEditSlide, showsCache, special, styles, textEditActive } from "../../../stores"
     import { transposeText } from "../../../utils/chordTranspose"
+    import { triggerFunction } from "../../../utils/common"
     import { getAccess } from "../../../utils/profile"
     import { slideHasAction } from "../../actions/actions"
     import MediaLoader from "../../drawer/media/MediaLoader.svelte"
     import Icon from "../../helpers/Icon.svelte"
     import T from "../../helpers/T.svelte"
     import { history } from "../../helpers/history"
-    import { downloadOnlineMedia, getMediaStyle, loadThumbnail, mediaSize } from "../../helpers/media"
+    import { downloadOnlineMedia, getMediaFileFromClipboard, getMediaStyle, loadThumbnail, mediaSize } from "../../helpers/media"
     import { getActiveOutputs, getResolution, getSlideFilter } from "../../helpers/output"
     import { getLayoutRef } from "../../helpers/show"
     import { _show } from "../../helpers/shows"
@@ -29,7 +30,7 @@
     import Editbox from "../editbox/Editbox.svelte"
     import { getUsedChords } from "../scripts/chords"
     import { addItem } from "../scripts/itemHelpers"
-    import { setCaretAtEnd } from "../scripts/textStyle"
+    import { getSlideText, setCaretAtEnd } from "../scripts/textStyle"
 
     $: currentShowId = $activeShow?.id || $activeEdit.showId || ""
     $: currentShow = $showsCache[currentShowId]
@@ -92,7 +93,7 @@
     $: if (bgPath) mediaStyle = getMediaStyle($media[bgPath], currentStyle)
 
     $: {
-        if (active.length) updateStyles()
+        if (active.length) setTimeout(updateStyles)
         else newStyles = {}
     }
 
@@ -181,6 +182,12 @@
     function blurred() {
         altTemp = false
         altKeyPressed = false
+    }
+
+    // paste any images in clipboard
+    async function paste(e: ClipboardEvent) {
+        const mediaData = await getMediaFileFromClipboard(e)
+        if (mediaData) addItem("media", null, { src: mediaData })
     }
 
     // ZOOM
@@ -292,20 +299,24 @@
     $: notesVisible = !!notes // && !chordsMode
 
     const shortcutItems: { id: ItemType; icon?: string }[] = [{ id: "text" }, { id: "media", icon: "image" }, { id: "timer" }]
+
+    $: widthOrHeight = getStyleResolution(resolution, width, height, "fit", { zoom })
+
+    $: hasTextContent = getSlideText(Slide)?.length
 </script>
 
-<svelte:window on:keydown={keydown} on:keyup={keyup} on:blur={blurred} />
+<svelte:window on:keydown={keydown} on:keyup={keyup} on:blur={blurred} on:paste={paste} />
 
 <div class="editArea">
     <div class="parent" class:noOverflow={zoom >= 1} bind:this={scrollElem} bind:offsetWidth={width} bind:offsetHeight={height}>
         {#if Slide}
-            <DropArea id="edit">
+            <DropArea id="edit" file>
                 <Zoomed
                     background={(transparentOutput || $special.transparentSlides) && !background ? "transparent" : background ? "black" : Slide?.settings?.color || currentStyle.background || "black"}
                     {checkered}
                     border={checkered}
                     {resolution}
-                    style={getStyleResolution(resolution, width, height, "fit", { zoom })}
+                    style={widthOrHeight}
                     bind:ratio
                     {hideOverflow}
                     center={zoom >= 1}
@@ -365,7 +376,8 @@
     {/if}
 
     {#if !$focusMode && !isLocked}
-        {#if !chordsMode}
+        <!-- && Slide?.items?.length -->
+        {#if !chordsMode && !widthOrHeight.includes("height")}
             <FloatingInputs bottom={notesVisible ? bottomHeight : 10} side="center">
                 {#each shortcutItems as item}
                     <MaterialButton title="settings.add: items.{item.id}" on:click={() => addItem(item.id)}>
@@ -380,14 +392,23 @@
 
             {#if open}
                 <div class="divider"></div>
+
+                {#if hasTextContent}
+                    <MaterialButton title="edit.insert_virtual_break" on:click={() => triggerFunction("insert_virtual_break")}>
+                        <Icon id="add" white />
+                        {#if !$labelsDisabled}<T id="edit.insert_virtual_break" />{/if}
+                    </MaterialButton>
+
+                    <div class="divider"></div>
+                {/if}
             {/if}
 
             <!-- no need to add chords on scripture/events -->
-            {#if !currentShow?.reference?.type && Slide && !isLocked}
+            {#if !currentShow?.reference?.type && Slide && !isLocked && hasTextContent}
                 <!-- {#if open || slideChords.length} -->
                 <MaterialButton isActive={chordsMode} on:click={toggleChords} title="edit.chords">
                     <Icon id="chords" white={!slideChords.length} />
-                    {#if open && !$labelsDisabled}<T id="edit.chords" />{/if}
+                    <!-- {#if open && !$labelsDisabled}<T id="edit.chords" />{/if} -->
                 </MaterialButton>
                 <!-- {/if} -->
 
@@ -398,7 +419,7 @@
 
             <MaterialButton title="show.text" on:click={() => textEditActive.set(true)}>
                 <Icon id="text_edit" white />
-                {#if open && !$labelsDisabled}<p><T id="show.text" /></p>{/if}
+                <!-- {#if open && !$labelsDisabled}<p><T id="show.text" /></p>{/if} -->
             </MaterialButton>
         </FloatingInputs>
 

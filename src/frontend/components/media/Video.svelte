@@ -22,8 +22,34 @@
         dispatch("loaded", true)
     }
 
+    // Pingback after 30 playing seconds on videos where tracking is required
+    let pingbackTime = 0
+    let pingbackInterval: NodeJS.Timeout | null = null
+    $: if (path && !mirror) setupPingback()
+    function setupPingback() {
+        pingbackTime = 0
+        if (pingbackInterval) clearInterval(pingbackInterval)
+
+        pingbackInterval = setInterval(() => {
+            if (videoData.paused) return
+
+            pingbackTime++
+            if (pingbackTime < 30) return
+
+            if (pingbackInterval) clearInterval(pingbackInterval)
+            sendPingback()
+        }, 1000)
+    }
+    function sendPingback() {
+        const pingbackUrl = $media[path]?.pingbackUrl
+        if (!pingbackUrl) return
+
+        fetch(pingbackUrl, { method: "GET", mode: "no-cors" }).catch(console.error)
+    }
+
     onDestroy(() => {
         if (endInterval) clearInterval(endInterval)
+        if (pingbackInterval) clearInterval(pingbackInterval)
     })
 
     // custom end time
@@ -41,6 +67,9 @@
     function playing() {
         if (!hasLoaded || mirror) return
         hasLoaded = false
+
+        // has custom start time
+        if (Math.max(startAt, mediaStyle.fromTime || 0) || 0 === 0) return
 
         // go to custom start time
         videoData.paused = true
@@ -70,12 +99,15 @@
     }
 
     $: mediaStyleString = `width: 100%;height: 100%;object-fit: ${mediaStyle.fit === "blur" ? "contain" : mediaStyle.fit || "contain"};filter: ${mediaStyle.filter || ""};transform: scale(${mediaStyle.flipped ? "-1" : "1"}, ${mediaStyle.flippedY ? "-1" : "1"});`
-    $: mediaStyleBlurString = `position: absolute;filter: ${mediaStyle.filter || ""} blur(6px) opacity(0.3);object-fit: cover;width: 100%;height: 100%;transform: scale(${mediaStyle.flipped ? "-1" : "1"}, ${mediaStyle.flippedY ? "-1" : "1"});`
+    $: mediaStyleBlurString = `position: absolute;filter: ${mediaStyle.filter || ""} blur(${mediaStyle.fitOptions?.blurAmount ?? 6}px) opacity(${mediaStyle.fitOptions?.blurOpacity || 0.3});object-fit: cover;width: 100%;height: 100%;transform: scale(${mediaStyle.flipped ? "-1" : "1"}, ${mediaStyle.flippedY ? "-1" : "1"});`
 
     let blurVideo: HTMLVideoElement | null = null
     $: if (blurVideo && (videoTime < blurVideo.currentTime - 0.1 || videoTime > blurVideo.currentTime + 0.1)) blurVideo.currentTime = videoTime
     $: if (!videoData.paused && blurVideo?.paused) blurVideo.play()
     $: blurPausedState = videoData.paused
+
+    // some videos don't like high playback speed (above 5.9)
+    // https://issues.chromium.org/issues/40167938
 </script>
 
 <div style="display: flex;width: 100%;height: 100%;place-content: center;{animationStyle}">
