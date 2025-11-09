@@ -1,8 +1,8 @@
 <script lang="ts">
     import type { AccessType, Profile } from "../../../../types/Main"
     import { SettingsTabs } from "../../../../types/Tabs"
-    import { activeProfile, categories, dictionary, folders, overlayCategories, profiles, selectedProfile, stageShows, templateCategories } from "../../../stores"
-    import { translate } from "../../../utils/language"
+    import { activeProfile, categories, folders, overlayCategories, profiles, selectedProfile, stageShows, templateCategories } from "../../../stores"
+    import { translateText } from "../../../utils/language"
     import { clone, keysToID, sortByName } from "../../helpers/array"
     import { history } from "../../helpers/history"
     import Icon from "../../helpers/Icon.svelte"
@@ -15,11 +15,11 @@
     // set id after deletion
     $: if (profileId !== "" && !$profiles[profileId]) profileId = ""
 
-    $: profileId = $selectedProfile ?? Object.keys($profiles)[0] ?? ""
+    $: profileId = $selectedProfile || ""
     $: currentProfile = $profiles[profileId] || clone(defaultProfile)
 
     const defaultProfile: Profile = {
-        name: $dictionary.example?.default || "Default",
+        name: translateText("example.default"),
         color: "",
         image: "",
         access: {}
@@ -56,7 +56,7 @@
 
     function getInputs(globalAccess: AccessType | undefined, id: string) {
         const inputs = clone(accessInputs).map((a: any) => {
-            a.title = translate(a.name)
+            a.title = translateText(a.name)
             delete a.name
             return a
         })

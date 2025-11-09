@@ -1,26 +1,8 @@
 <script lang="ts">
-    import type { Bible } from "../../../types/Scripture"
     import type { DrawerTabIds } from "../../../types/Tabs"
-    import {
-        activeDrawerTab,
-        activeEdit,
-        activePage,
-        activePopup,
-        activeProject,
-        activeShow,
-        dictionary,
-        drawer,
-        drawerOpenedInEdit,
-        drawerTabsData,
-        focusMode,
-        labelsDisabled,
-        os,
-        previousShow,
-        projects,
-        quickTextCache,
-        selected
-    } from "../../stores"
+    import { activeDrawerTab, activeEdit, activePage, activePopup, activeProject, activeShow, drawer, drawerOpenedInEdit, drawerTabsData, focusMode, labelsDisabled, os, previousShow, projects, quickTextCache, selected } from "../../stores"
     import { DEFAULT_DRAWER_HEIGHT, DEFAULT_WIDTH, MENU_BAR_HEIGHT } from "../../utils/common"
+    import { translateText } from "../../utils/language"
     import { getAccess } from "../../utils/profile"
     import { shouldOpenReplace } from "../../utils/shortcuts"
     import { drawerTabs } from "../../values/tabs"
@@ -32,6 +14,7 @@
     import { selectTextOnFocus } from "../helpers/inputActions"
     import T from "../helpers/T.svelte"
     import Button from "../inputs/Button.svelte"
+    import MaterialButton from "../inputs/MaterialButton.svelte"
     import Resizeable from "../system/Resizeable.svelte"
     import Info from "./info/Info.svelte"
 
@@ -114,12 +97,17 @@
         if (!e.target.closest(".top")) move = false
     }
 
+    $: activeTab = $activeDrawerTab
     function openDrawerTab(tab: { id: string; name: string; icon: string }) {
-        if ($activeDrawerTab === tab.id) return
+        const newId = tab.id as DrawerTabIds
+        if ($activeDrawerTab === newId) return
+
+        // open visually immediately
+        activeTab = newId
 
         // allow click event first
         setTimeout(() => {
-            activeDrawerTab.set(tab.id as DrawerTabIds)
+            activeDrawerTab.set(newId)
 
             // remove focus for search function to work
             setTimeout(() => (document.activeElement as any)?.blur(), 10)
@@ -141,8 +129,6 @@
         // if ($activeDrawerTab === "shows") {
         // }
     }
-
-    let bibles: Bible[] = []
 
     let firstMatch: null | any = null
     let searchElem: HTMLInputElement | undefined
@@ -174,7 +160,7 @@
             }
 
             searchElem.select()
-            let newIndex = ($activeShow?.index ?? $projects[$activeProject].shows.length - 1) + 1
+            let newIndex = ($activeShow?.index ?? $projects[$activeProject]?.shows?.length - 1) + 1
             if ($activePage === "show") history({ id: "UPDATE", newData: { key: "shows", index: newIndex, data: { id: match.id } }, oldData: { id: $activeProject }, location: { page: "show", id: "project_ref" } })
             activeShow.set({ ...match, index: newIndex })
             searchValue = ""
@@ -218,34 +204,41 @@
         <span class="tabs">
             {#each tabs as tab, i}
                 {#if $drawerTabsData[tab.id]?.enabled !== false && getAccess(tab.id).global !== "none" && (!$focusMode || !hiddenInFocusMode.includes(tab.id))}
-                    <Button
+                    <!-- overflow: unset; -->
+                    <MaterialButton
                         id={tab.id}
+                        style="border-radius: 0;border-bottom: 2px solid var(--primary);padding: 0.2em 0.8em;"
+                        class="context #drawer_top"
+                        title="{tab.name.split('.')[0]}.{tab.name.split('.')[1]} [Ctrl+{i + 1}]"
+                        isActive={activeTab === tab.id}
                         on:click={() => openDrawerTab(tab)}
                         on:dblclick={closeDrawer}
-                        active={$activeDrawerTab === tab.id}
-                        class="context #drawer_top"
-                        title="{$dictionary[tab.name.split('.')[0]]?.[tab.name.split('.')[1]]} [Ctrl+{i + 1}]"
                     >
-                        <Icon id={tab.icon} size={1.3} white={$activeDrawerTab === tab.id} />
+                        <Icon id={tab.icon} size={1.3} white={activeTab === tab.id} />
                         {#if !$labelsDisabled && !$focusMode}
                             <span><T id={tab.name} /></span>
                         {/if}
-                    </Button>
+                    </MaterialButton>
                 {/if}
             {/each}
         </span>
 
-        <input bind:this={searchElem} class:hidden={!searchActive && !searchValue.length} class="search edit" type="text" placeholder="{$dictionary.main?.search}..." bind:value={searchValue} on:input={search} use:selectTextOnFocus />
+        <input bind:this={searchElem} class:hidden={!searchActive && !searchValue.length} class="search edit" type="text" placeholder={translateText("main.search...")} bind:value={searchValue} on:input={search} use:selectTextOnFocus />
         {#if !searchActive && !searchValue.length}
-            <Button class="search" style="border-bottom: 2px solid var(--secondary);" on:click={() => (searchActive = true)} title="{$dictionary.tabs?.search_tip} [Ctrl+F]" bold={false}>
+            <Button class="search" style="border-bottom: 2px solid var(--secondary);" on:click={() => (searchActive = true)} title={translateText("tabs.search_tip [Ctrl+F]")} bold={false}>
                 <Icon id="search" size={1.4} white right={!$labelsDisabled && !$focusMode} />
                 {#if !$labelsDisabled && !$focusMode}<p style="opacity: 0.8;font-size: 1.1em;"><T id="main.search" /></p>{/if}
             </Button>
         {:else}
+            {#if $activeDrawerTab === "scripture"}
+                <div class="clearSearch autocomplete">
+                    <Icon id="autofill" white />
+                </div>
+            {/if}
             <div class="clearSearch">
                 <Button
                     style="height: 100%;"
-                    title={$dictionary.clear?.search}
+                    title={translateText("clear.search")}
                     on:click={() => {
                         searchValue = ""
                         searchElem?.focus()
@@ -261,10 +254,10 @@
         <Resizeable id="leftPanelDrawer">
             <Navigation id={$activeDrawerTab} />
         </Resizeable>
-        <Content id={$activeDrawerTab} bind:searchValue bind:firstMatch bind:bibles />
+        <Content id={$activeDrawerTab} bind:searchValue bind:firstMatch />
         <Resizeable id="rightPanelDrawer" let:width side="right">
             <div class="right" class:row={width > DEFAULT_WIDTH * 1.8}>
-                <Info id={$activeDrawerTab} {bibles} />
+                <Info id={$activeDrawerTab} />
             </div>
         </Resizeable>
     </div>
@@ -308,9 +301,6 @@
         overflow-x: auto;
         overflow-y: hidden;
     }
-    .top .tabs span {
-        margin-inline-start: 0.5em;
-    }
 
     .search {
         background-color: rgb(0 0 0 / 0.2);
@@ -323,6 +313,7 @@
         padding: 0 8px;
         padding-right: 40px;
         border: none;
+        border-radius: 4px;
         border-inline-start: 4px solid var(--primary-darker);
     }
     .search:active,
@@ -340,6 +331,13 @@
         right: 0;
         height: calc(100% - 4px);
         z-index: 1;
+    }
+    .clearSearch.autocomplete {
+        right: 45px;
+        display: flex;
+        align-items: center;
+        opacity: 0.3;
+        pointer-events: none;
     }
 
     .hidden {

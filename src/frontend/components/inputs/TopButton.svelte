@@ -1,9 +1,10 @@
 <script lang="ts">
     import type { TopViews } from "../../../types/Tabs"
     import { activeEdit, activePage, activeShow, dictionary, editHistory, labelsDisabled, shows, special } from "../../stores"
+    import { translateText } from "../../utils/language"
     import Icon from "../helpers/Icon.svelte"
     import T from "../helpers/T.svelte"
-    import Button from "./Button.svelte"
+    import MaterialButton from "./MaterialButton.svelte"
 
     export let id: TopViews
     export let red = false
@@ -12,9 +13,6 @@
     $: label = hideLabel === null ? !$labelsDisabled : !hideLabel
 
     const keys = { show: 1, edit: 2, stage: 3, draw: 4, settings: 5 }
-
-    $: numberKeys = !!$special.numberKeys
-    $: title = $dictionary.menu?.["_title_" + id] + (numberKeys ? "" : ` [${keys[id] || ""}]`)
 
     function openPage() {
         activePage.set(id)
@@ -39,34 +37,28 @@
         }
 
         function openEdit() {
-            activeEdit.set({ slide: 0, items: [], showId: $activeShow?.id })
+            activeEdit.set({ slide: $activeEdit.slide || 0, items: [], showId: $activeShow?.id })
         }
     }
 </script>
 
-<div>
-    <!-- width: 140px; -->
-    <Button style={label ? "padding: 0.3em 1.2em;" : ""} {title} {disabled} active={$activePage === id} {red} on:click={openPage}>
-        <Icon {id} size={1.6} right={label} white={$activePage === id} />
-        {#if label}
-            <span><T id={"menu." + id} /></span>
-        {/if}
-    </Button>
-</div>
+<!-- border-top-left-radius: 12px;border-top-right-radius: 12px; -->
+<MaterialButton
+    style="border-radius: 0;border-bottom: 2px solid var(--primary);{label ? 'padding: 0.3em 1.2em;' : ''}"
+    title={translateText(`menu._title_${id}${$special.numberKeys ? "" : ` [${keys[id]}]`}`, $dictionary)}
+    isActive={$activePage === id}
+    {disabled}
+    on:click={openPage}
+    {red}
+>
+    <Icon {id} size={1.5} white={$activePage === id} />
+    {#if label}<span><T id="menu.{id}" /></span>{/if}
+</MaterialButton>
 
 <style>
-    div :global(button) {
-        /* padding: 10px; */
-        display: flex;
-        /* flex-direction: column; */
-        justify-content: center;
-        min-width: 60px;
-        height: 100%;
-    }
-
-    span {
-        font-weight: bold;
-    }
+    /* span {
+        font-weight: 700;
+    } */
 
     @media screen and (max-width: 750px) {
         span {

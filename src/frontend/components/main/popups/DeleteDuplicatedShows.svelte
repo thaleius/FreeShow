@@ -3,15 +3,13 @@
     import { activePage, activePopup, popupData, shows, showsCache } from "../../../stores"
     import { getSlideText } from "../../edit/scripts/textStyle"
     import { history } from "../../helpers/history"
-    import Icon from "../../helpers/Icon.svelte"
     import { loadShows } from "../../helpers/setShow"
     import T from "../../helpers/T.svelte"
-    import Button from "../../inputs/Button.svelte"
-    import CombinedInput from "../../inputs/CombinedInput.svelte"
+    import { dateToString } from "../../helpers/time"
+    import HRule from "../../input/HRule.svelte"
     import MaterialButton from "../../inputs/MaterialButton.svelte"
     import MaterialTextarea from "../../inputs/MaterialTextarea.svelte"
     import Center from "../../system/Center.svelte"
-    import Date from "../../system/Date.svelte"
     import Loader from "../Loader.svelte"
 
     let data = $popupData.data
@@ -65,7 +63,9 @@
                     return
                 }
 
-                if (show.timestamps?.modified > compareShow.timestamps?.modified) keepId = id
+                const first = show.timestamps?.modified || 0
+                const second = compareShow.timestamps?.modified || 0
+                if (first > second) keepId = id
             })
 
             ids = ids.filter((id) => id !== keepId)
@@ -186,27 +186,26 @@
                 <p style="display: flex;align-items: center;justify-content: space-between;padding: 5px 0;">
                     <span>{show.name || "—"}</span>
                     <!-- creation/modified date! -->
-                    <span style="opacity: 0.5;font-size: 0.7em;"><Date d={show.timestamps?.modified} /></span>
+                    <span style="opacity: 0.5;font-size: 0.7em;">{dateToString(show.timestamps?.modified || "", true)}</span>
                 </p>
 
                 {#if loadedTexts[i]}
                     <MaterialTextarea label="edit.text" rows={5} value={loadedTexts[i]} disabled />
                 {/if}
 
-                <Button style="width: 100%;" on:click={() => deleteAtIndex(i)} center red>
-                    <Icon id="delete" right />
+                <MaterialButton icon="delete" style="padding: 5px;" on:click={() => deleteAtIndex(i)} white red>
                     <T id="actions.delete" />
-                </Button>
+                </MaterialButton>
             </div>
+
+            <HRule />
         {/each}
     </div>
 
-    <CombinedInput>
-        <Button style="width: 100%;" on:click={next} center>
-            <Icon id="forward" right />
-            <T id="guide.skip" />
-        </Button>
-    </CombinedInput>
+    <MaterialButton variant="outlined" icon="forward" on:click={next}>
+        <T id="guide.skip" />
+    </MaterialButton>
+
     <!-- {#if !loadedTexts.length}
         {#if loading}
             <Loader></Loader>
@@ -221,30 +220,22 @@
         <Loader />
     </Center>
 {:else}
-    <CombinedInput>
-        <Button style="width: 100%;" on:click={deleteManual} center>
-            <T id="show.delete_manual" />
-        </Button>
-    </CombinedInput>
+    <MaterialButton variant="outlined" on:click={deleteManual}>
+        <T id="show.delete_manual" />
+    </MaterialButton>
 
-    <br />
+    <HRule />
 
-    <CombinedInput>
-        <Button style="width: 100%;" on:click={deleteMatching} center red>
-            <T id="show.delete_match" />
-        </Button>
-    </CombinedInput>
+    <MaterialButton variant="outlined" on:click={deleteMatching} red>
+        <T id="show.delete_match" />
+    </MaterialButton>
 
-    <CombinedInput>
-        <Button style="width: 100%;" on:click={deleteOldest} center red>
-            <T id="show.delete_keep_last_modified" />
-        </Button>
-    </CombinedInput>
-    <CombinedInput>
-        <Button style="width: 100%;" on:click={deleteNewest} center red>
-            <T id="show.delete_keep_first_created" />
-        </Button>
-    </CombinedInput>
+    <MaterialButton variant="outlined" on:click={deleteOldest} red>
+        <T id="show.delete_keep_last_modified" />
+    </MaterialButton>
+    <MaterialButton variant="outlined" on:click={deleteNewest} red>
+        <T id="show.delete_keep_first_created" />
+    </MaterialButton>
 {/if}
 
 <style>
@@ -252,7 +243,6 @@
         display: flex;
         flex-direction: column;
         gap: 10px;
-        margin-bottom: 20px;
     }
 
     .show {

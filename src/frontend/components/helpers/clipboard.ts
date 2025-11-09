@@ -6,11 +6,13 @@ import type { Folder, Project } from "../../../types/Projects"
 import type { Item } from "../../../types/Show"
 import { sendMain } from "../../IPC/main"
 import {
+    actions,
     activeDays,
     activeDrawerTab,
     activePage,
     activePopup,
     activeProject,
+    activeRename,
     activeShow,
     activeStage,
     audioFolders,
@@ -19,17 +21,18 @@ import {
     categories,
     clipboard,
     currentOutputSettings,
-    dictionary,
     drawerTabsData,
+    effects,
     events,
     focusedArea,
     folders,
     media,
     mediaFolders,
-    actions,
     outputs,
     overlayCategories,
     overlays,
+    popupData,
+    profiles,
     projects,
     refreshEditSlide,
     scriptures,
@@ -46,13 +49,10 @@ import {
     timers,
     triggers,
     variables,
-    videoMarkers,
-    effects,
-    profiles,
-    activeRename,
-    popupData
+    videoMarkers
 } from "../../stores"
 import { newToast, triggerFunction } from "../../utils/common"
+import { translateText } from "../../utils/language"
 import { removeSlide } from "../context/menuClick"
 import { deleteTimer } from "../drawer/timers/timers"
 import { updateSortedStageItems } from "../edit/scripts/itemHelpers"
@@ -62,10 +62,10 @@ import { clone, keysToID, removeDeleted, removeDuplicates } from "./array"
 import { pasteText } from "./caretHelper"
 import { history } from "./history"
 import { getFileName, removeExtension } from "./media"
+import { select } from "./select"
 import { loadShows } from "./setShow"
 import { checkName, getLayoutRef } from "./show"
 import { _show } from "./shows"
-import { select } from "./select"
 
 export function copy(clip: Clipboard | null = null, getData = true, shouldDuplicate = false) {
     let copyData: Clipboard | null = clip
@@ -269,7 +269,7 @@ const selectActions = {
         if (!get(activeEdit).type || get(activeEdit).type === "show") {
             const ref = getLayoutRef()
             const editSlide = ref[get(activeEdit).slide!]
-            const showItems = _show().slides([editSlide.id]).get()[0].items
+            const showItems = _show().slides([editSlide.id]).get()[0]?.items
             itemCount = showItems.length
         } else if (get(activeEdit).id) {
             if (get(activeEdit).type === "overlay") {
@@ -453,7 +453,7 @@ const copyActions = {
         })
 
         const layoutMedia = layouts.filter((a) => a.background || a.audio?.length)
-        const showMedia = _show().get().media
+        const showMedia = _show().get()?.media || {}
         layoutMedia.forEach((layoutData) => {
             const mediaIds: string[] = []
             if (layoutData.background) mediaIds.push(layoutData.background)
@@ -625,7 +625,7 @@ const pasteActions = {
 
         // media
         if (data.media) {
-            const showMedia = _show().get().media
+            const showMedia = _show().get()?.media || {}
             _show().set({ key: "media", value: { ...showMedia, ...data.media } })
         }
 
@@ -928,7 +928,7 @@ const deleteActions = {
                 return a
             })
         } else {
-            newToast("$error.keep_one_layout")
+            newToast("error.keep_one_layout")
         }
     },
     video_subtitle: (data: any) => {
@@ -969,9 +969,6 @@ const deleteActions = {
     },
     output: (data: any) => {
         data.forEach(({ id }) => {
-            // delete key output
-            if (get(outputs)[id]?.keyOutput) history({ id: "UPDATE", newData: { id: get(outputs)[id].keyOutput }, location: { page: "settings", id: "settings_output" } })
-
             history({ id: "UPDATE", newData: { id }, location: { page: "settings", id: "settings_output" } })
         })
 
@@ -1039,6 +1036,7 @@ const duplicateActions = {
         })
 
         projects.update((a) => {
+            if (!a[get(activeProject)!]?.shows) return a
             a[get(activeProject)!].shows.push(...data)
             return a
         })
@@ -1128,7 +1126,7 @@ const duplicateActions = {
         data.forEach(({ id }) => {
             const theme = clone(get(themes)[id])
             let name = theme.name
-            if (theme.default) name = get(dictionary).themes?.[name] || name
+            if (theme.default) name = translateText("themes." + name)
 
             history({ id: "UPDATE", newData: { data: theme, replace: { default: false, name: name + " 2" } }, location: { page: "settings", id: "settings_theme" } })
         })
@@ -1160,7 +1158,8 @@ const duplicateActions = {
                 if (!a[id] || a[id].shows?.length) return
 
                 const newAction = clone(a[id])
-                newAction.name = data.length === 1 ? "" : newAction.name + " 2"
+                // newAction.name = data.length === 1 ? "" : newAction.name + " 2"
+                newAction.name = newAction.name + " 2"
 
                 const newId = uid()
                 a[newId] = newAction
@@ -1180,7 +1179,8 @@ const duplicateActions = {
         timers.update((a) => {
             data.forEach(({ id }) => {
                 const newTimer = clone(a[id])
-                newTimer.name = data.length === 1 ? "" : newTimer.name + " 2"
+                // newTimer.name = data.length === 1 ? "" : newTimer.name + " 2"
+                newTimer.name = newTimer.name + " 2"
 
                 const newId = uid()
                 a[newId] = newTimer
@@ -1198,6 +1198,8 @@ const duplicateActions = {
         variables.update((a) => {
             data.forEach(({ id }) => {
                 const newVariable = clone(a[id])
+                // add name (can't rename currently)
+                // newVariable.name = newVariable.name + " 2"
                 newVariable.name = data.length === 1 ? "" : newVariable.name + " 2"
 
                 const newId = uid()

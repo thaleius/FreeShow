@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onDestroy } from "svelte"
     import { OUTPUT } from "../../../types/Channels"
-    import { activeStage, activeTimers, allOutputs, currentWindow, outputs, playingAudio, playingAudioPaths, stageShows, variables, videosTime } from "../../stores"
+    import { activeStage, allOutputs, currentWindow, outputs, stageShows } from "../../stores"
     import { getAccess } from "../../utils/profile"
     import { send } from "../../utils/request"
     import { getSortedStageItems, shouldItemBeShown } from "../edit/scripts/itemHelpers"
@@ -72,7 +72,7 @@
     $: layout = $stageShows[stageLayoutId || ""] || {}
 
     // get video time (pre 1.4.0)
-    $: if ($currentWindow === "output" && Object.keys(layout.items || {}).find((id) => id.includes("video"))) requestVideoData()
+    $: if ($currentWindow === "output" && Object.keys(layout.items || {}).some((id) => id.includes("video"))) requestVideoData()
     let interval: NodeJS.Timeout | null = null
     function requestVideoData() {
         if (interval) return
@@ -114,12 +114,23 @@
         })
     }
 
-    $: currentOutput = $outputs[outputId] || {}
+    $: currentOutput = $outputs[outputId] || $allOutputs[outputId] || {}
     $: backgroundColor = currentOutput.transparent ? "transparent" : layout.settings?.color || "#000000"
 
     $: stageItems = getSortedStageItems(stageLayoutId, $stageShows)
 
-    $: videoTime = $videosTime[outputId] || 0
+    // $: videoTime = $videosTime[outputId] || 0
+    // { $activeTimers, $variables, $playingAudio, $playingAudioPaths, videoTime }
+    let updater = 0
+    const updaterInterval = setInterval(() => {
+        if (stageItems.some((a) => a.conditions)) updater++
+    }, 500)
+    onDestroy(() => clearInterval(updaterInterval))
+
+    function checkVisibility(itemIndex: number, _updater: any) {
+        const item = stageItems[itemIndex]
+        return shouldItemBeShown(stageItemToItem(item), item.type === "slide_text" ? getSlideTextItems(layout, item, $outputs || $allOutputs) : [], { type: "stage" })
+    }
 </script>
 
 <div class="stageArea">
@@ -133,8 +144,8 @@
                     <Snaplines bind:lines bind:newStyles bind:mouse {ratio} {active} isStage />
                 {/if}
                 {#key stageLayoutId}
-                    {#each stageItems as item}
-                        {#if (item.type || item.enabled !== false) && (edit || shouldItemBeShown(stageItemToItem(item), item.type === "slide_text" ? getSlideTextItems(layout, item, $outputs || $allOutputs) : [], { type: "stage" }, { $activeTimers, $variables, $playingAudio, $playingAudioPaths, videoTime }))}
+                    {#each stageItems as item, index}
+                        {#if (item.type || item.enabled !== false) && (edit || checkVisibility(index, updater))}
                             <Stagebox edit={edit && !readOnly} stageLayout={edit ? null : layout} id={item.id} item={clone(item)} {ratio} {preview} bind:mouse />
                         {/if}
                     {/each}

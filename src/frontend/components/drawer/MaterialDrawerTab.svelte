@@ -1,7 +1,7 @@
 <script lang="ts">
     import { createEventDispatcher } from "svelte"
     import type { SelectIds } from "../../../types/Main"
-    import { actions, activeActionTagFilter, activeDrawerTab, activeVariableTagFilter, audioPlaylists, drawerTabsData } from "../../stores"
+    import { actions, activeActionTagFilter, activeDrawerTab, activePlaylist, activeVariableTagFilter, audioPlaylists, drawerTabsData, outputs, templates } from "../../stores"
     import { translateText } from "../../utils/language"
     import { getActionIcon } from "../actions/actions"
     import Icon from "../helpers/Icon.svelte"
@@ -9,6 +9,7 @@
     import MaterialButton from "../inputs/MaterialButton.svelte"
     import SelectElem from "../system/SelectElem.svelte"
     import { clone } from "../helpers/array"
+    import { getActiveOutputs } from "../helpers/output"
 
     export let category: any
 
@@ -16,10 +17,11 @@
     $: label = category.label
     $: icon = category.icon
     $: action = category.action || ""
+    $: template = category.template || ""
     $: count = category.count || 0
     $: readOnly = category.readOnly || false
 
-    export let parentId: string = ""
+    export let parentId = ""
     export let isSubmenu = false
     $: submenu = category.submenu || {}
 
@@ -28,15 +30,20 @@
     $: submenuActive = isSubmenu ? (active === "actions" ? $activeActionTagFilter.includes(id) : active === "variables" ? $activeVariableTagFilter.includes(id) : false) : false
     $: isActive = submenuActive || active === id
 
+    $: outputIds = getActiveOutputs($outputs, true, true, true)
+    $: output = $outputs[outputIds[0] || ""]
+    $: showOutline = drawerId === "scripture" ? (output?.out?.slide as any)?.categoryId === id : drawerId === "audio" ? $activePlaylist?.id === id : false
+
     $: drawerId = $activeDrawerTab
     $: selectId = `category_${drawerId}${drawerId === "scripture" ? "___" + icon : ""}` as SelectIds
 
     const dispatch = createEventDispatcher()
     function click(e: any) {
         const { ctrl, shift } = e.detail
-        if (ctrl || shift) return
+        if (ctrl) return
 
-        if (category.openTrigger) category.openTrigger(id)
+        if (category.openTrigger) category.openTrigger(id, shift)
+        if (shift) return
 
         drawerTabsData.update((a) => {
             a[drawerId].activeSubTab = parentId || id
@@ -45,15 +52,22 @@
         })
     }
 
+    function dblclick() {
+        if (category.onDoubleClick) category.onDoubleClick()
+    }
+
     function rename(e: any) {
         dispatch("rename", { id, value: e.detail.value })
     }
 
-    const defaultFolders = ["all", "unlabeled", "favourites", "effects_library", "effects", "online", "screens", "cameras", "microphones", "audio_streams"]
+    const defaultFolders = ["all", "unlabeled", "number", "favourites", "effects_library", "effects", "online", "screens", "cameras", "microphones", "audio_streams"]
     const tabsWithCategories = ["shows", "media", "audio", "overlays", "templates", "scripture"]
 
     $: noEdit = !tabsWithCategories.includes(drawerId) || defaultFolders.includes(id)
     $: className = noEdit ? "" : $audioPlaylists[id] ? "context #playlist" : `context #category_${drawerId}_button${readOnly ? "_readonly" : ""}`
+
+    // drag and drop audio playlists
+    $: draggable = !!(drawerId === "audio" && $audioPlaylists[id])
 
     // SUB MENU
 
@@ -79,8 +93,8 @@
     }
 </script>
 
-<SelectElem style="width: 100%;" id={selectId} selectable={!noEdit} borders="center" trigger="column" data={id}>
-    <MaterialButton class={className} style="width: 100%;font-weight: normal;padding: 0.2em 0.8em;" {isActive} on:click={click} tab>
+<SelectElem style="width: 100%;" id={selectId} selectable={!noEdit} {draggable} borders="center" trigger="column" data={id}>
+    <MaterialButton class={className} style="width: 100%;font-weight: normal;padding: 0.2em 0.8em;" {isActive} {showOutline} on:click={click} on:dblclick={dblclick} tab>
         <div style="max-width: 85%;" data-title={translateText(label)}>
             <Icon style={isSubmenu ? `color: ${category.color};` : ""} id={icon} size={isSubmenu ? 0.8 : 1} white={isActive || isSubmenu} />
             {#if noEdit || isSubmenu}
@@ -96,8 +110,13 @@
             {/if}
         </div>
 
+        {#if template && $templates[template]}
+            <span style="padding: 0 5px;" data-title={translateText(`info.template: <b>${$templates[template].name}</b>`)}>
+                <Icon id="templates" size={0.8} white />
+            </span>
+        {/if}
         {#if action && $actions[action]}
-            <span style="padding: 0 5px;" data-title={$actions[action].name}>
+            <span style="padding: 0 5px;" data-title={translateText(`popup.action: <b>${$actions[action].name}</b>`)}>
                 <Icon id={getActionIcon(action)} size={0.8} white />
             </span>
         {/if}

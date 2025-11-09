@@ -16,10 +16,10 @@ let cachedFonts: Family[] = []
 export async function getFontsList() {
     if (cachedFonts.length) return cachedFonts
 
-    const fonts = await window.queryLocalFonts()
+    const localFonts = await window.queryLocalFonts()
 
-    let families: { [key: string]: FontData[] } = {}
-    fonts.forEach((font) => {
+    const families: { [key: string]: FontData[] } = {}
+    localFonts.forEach((font) => {
         if (!families[font.family]) families[font.family] = []
         families[font.family].push(font)
     })
@@ -34,7 +34,7 @@ export async function getFontsList() {
 
         if (!newFamilyFonts.length) newFamilyFonts = [familyFonts[0]]
 
-        let previousStyleNames: string[] = []
+        const previousStyleNames: string[] = []
         const fonts: Font[] = newFamilyFonts.map((a) => {
             let style = a.style
 
@@ -118,10 +118,35 @@ export async function getSystemFontsList() {
         return { family: name, default: 0, fonts: [{ name, path: "", style: "", css }] }
     })
 
-    let loadedFonts = await getFontsList()
+    const loadedFonts = await getFontsList()
     if (!loadedFonts.length) return []
 
     return addFonts(fonts, loadedFonts).map((a) => ({ label: a.family, value: a.family, style: a.fonts[a.default]?.css || (a.family ? `font-family: ${a.family};` : "") }))
+}
+export function getFontStyleList(font: string) {
+    if (!cachedFonts.length) return { fontStyles: [], defaultValue: "" }
+
+    const family = cachedFonts.find((a) => a.family === font)
+    const fontStyles = (family?.fonts || []).map((a) => ({
+        value: a.css
+            ?.replace(/^font:\s*(.*);$/, "$1")
+            .replace("1em", "100px")
+            .trim(),
+        label: a.style,
+        style: a.css
+    }))
+
+    const defaultValue = fontStyles[family?.default || 0]?.value || ""
+
+    const existingValues: string[] = [defaultValue]
+    const filteredFontStyles = fontStyles.filter((a) => {
+        if (a.value === defaultValue) return true
+        if (existingValues.includes(a.value)) return false
+        existingValues.push(a.value)
+        return true
+    })
+
+    return { fontStyles: filteredFontStyles, defaultValue }
 }
 
 function addFonts(fonts: Family[], newFonts: Family[]) {
@@ -137,4 +162,26 @@ function addFonts(fonts: Family[], newFonts: Family[]) {
     // }
 
     return fonts
+}
+
+// PPT import
+export function loadCustomFonts(fonts: { name: string; path: string }[]) {
+    fonts.forEach((font) => {
+        // try loading from Google Fonts
+        const link = document.createElement("link")
+        link.rel = "stylesheet"
+        link.href = "https://fonts.googleapis.com/css2?family=" + font.name + ":wght@400;700&display=swap"
+        document.head.appendChild(link)
+
+        // fetch(font.path)
+        // .then(res => res.arrayBuffer())
+        // .then(buffer => {
+        //     const font = new FontFace(font.name, buffer)
+        //     return font.load()
+        // })
+        // .then(font => {
+        //     document.fonts.add(font)
+        //     console.log('Font loaded from binary!')
+        // })
+    })
 }

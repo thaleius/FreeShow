@@ -92,7 +92,7 @@ export function changeSlideGroups(obj: { sel: { data: { index: number }[] }; men
 function getConnectedGroups(newGroup: string, slides: number[], ref: LayoutRef[]) {
     // slides next to each other will be one group
     const groups: { slides: LayoutRef[]; groupData: GroupData }[] = []
-    const parentIndexes = slides.map((index) => ref[index].parent?.layoutIndex ?? index)
+    const parentIndexes = slides.map((index) => ref[index]?.parent?.layoutIndex ?? index)
 
     let previousParentIndex = -1
     ref.forEach((slideRef) => {
@@ -235,7 +235,7 @@ function updateValues(groups: { slides: LayoutRef[]; groupData: GroupData }[], n
     return { newParents, groups, newData }
 
     function checkIfSlideExistsMorePlaces(layout, slide, i) {
-        const ref = _show().layouts([layout.layoutId]).ref()[0]
+        const ref = _show().layouts([layout.layoutId]).ref()[0] || []
         return ref.find((lslide) => lslide.id === slide.id && (lslide.index !== slide.index || layout.layoutId !== activeLayout || (i === 0 && slide.type === "child")))
     }
 }
@@ -574,11 +574,7 @@ export function splitItemInTwo(slideRef: LayoutRef, itemIndex: number, sel: { st
             if (sel[i]?.start !== undefined) start = sel[i].start!
 
             if (start < 0 || currentIndex < start) {
-                firstLines[firstLines.length - 1].text.push({
-                    style: text.style,
-                    value: text.value
-                })
-
+                firstLines[firstLines.length - 1].text.push(text)
                 textPos += text.value.length
                 return
             }
@@ -603,8 +599,8 @@ export function splitItemInTwo(slideRef: LayoutRef, itemIndex: number, sel: { st
 
     const defaultLine = [
         {
-            align: lines[0].align || "",
-            text: [{ style: lines[0].text[0]?.style || "", value: "" }]
+            align: lines[0]?.align || "",
+            text: [{ style: (lines[0].text[1] || lines[0].text[0])?.style || "", value: "" }]
         }
     ]
     if (!firstLines.length || !firstLines[0].text.length) firstLines = defaultLine
@@ -845,6 +841,11 @@ export function mergeTextboxes(customSlideIndex = -1) {
     history({ id: "UPDATE", newData: { data: slide, key: "slides", keys: [slideRef.id] }, oldData: { id: get(activeShow)?.id }, location: { page: "edit", id: "show_key" } })
 }
 
+export function removeTagsAndContent(input) {
+    const regex = /<[^>]*>[^<]*<\/[^>]*>/g
+    return input.replace(regex, "")
+}
+
 // BREAK LONG LINES
 
 export function breakLongLines(showId: string, breakPoint: number) {
@@ -885,4 +886,22 @@ export function breakLongLines(showId: string, breakPoint: number) {
     })
 
     return slides
+}
+
+export const VIRTUAL_BREAK_CHAR = "[_VB]"
+export function createVirtualBreaks(lines: Line[], skip = false) {
+    if (!lines?.length) return []
+
+    const replaceWith = skip ? "" : "<br>"
+    lines.forEach(a => {
+        a.text.forEach(text => {
+            text.value = replaceVirtualBreaks(text.value, replaceWith)
+        })
+    })
+
+    return lines
+}
+export function replaceVirtualBreaks(line: string, replaceWith = "<br>") {
+    // replace & remove spaces
+    return line.replaceAll(VIRTUAL_BREAK_CHAR, replaceWith).replace(/\s*<br>\s*/g, "<br>")
 }

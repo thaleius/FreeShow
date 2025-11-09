@@ -1,9 +1,19 @@
 <script lang="ts">
     import { translateText } from "../../../utils/language"
-    import Date from "../../system/Date.svelte"
+    import { dateToString } from "../../helpers/time"
+    import Link from "../../inputs/Link.svelte"
 
     export let title: string | undefined
     export let info: { label: string; value: string | number | undefined | null; type?: string }[]
+
+    // remove part after ? in URL
+    function removeExtra(link: string) {
+        link = link.replace("https://", "")
+        let extra = link.indexOf("?")
+        if (extra > -1) link = link.slice(0, extra)
+        if (link.endsWith("/")) link = link.slice(0, link.length - 1)
+        return link
+    }
 </script>
 
 <div class="metadata">
@@ -25,7 +35,9 @@
                 <span class:default={typeof data.value === "string" ? data.value.includes(".") : false}>
                     {#if data.value}
                         {#if data.type === "date"}
-                            <Date d={data.value} />
+                            {dateToString(data.value, true)}
+                        {:else if data.type === "url" && typeof data.value === "string"}
+                            <Link url={data.value}>{removeExtra(data.value)}</Link>
                         {:else if typeof data.value === "string"}
                             {translateText(data.value)}
                         {:else}

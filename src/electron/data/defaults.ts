@@ -29,8 +29,6 @@ export const defaultSettings: { [key in SaveListSettings]: any } = {
         }
     },
     sorted: {},
-    styles: {},
-    profiles: {},
     openedFolders: ["default"],
     activeProject: null,
     alertUpdates: true,
@@ -70,12 +68,22 @@ export const defaultSettings: { [key in SaveListSettings]: any } = {
     },
     volume: 1,
     gain: 1,
+    audioChannelsData: {},
     driveData: { mainFolderId: null, disabled: false, initializeMethod: null, disableUpload: false },
     calendarAddShow: "",
     metronome: {},
+    equalizerConfig: { enabled: false, bands: [] },
+    eqPresets: {},
     effectsLibrary: [],
     special: {},
-    chumsSyncCategories: ["song"]
+    contentProviderData: {
+        planningcenter: {
+            localAlways: false
+        },
+        churchApps: {
+            syncCategories: ["song"]
+        }
+    },
 }
 
 export const defaultSyncedSettings: { [key in SaveListSyncedSettings]: any } = {
@@ -94,6 +102,8 @@ export const defaultSyncedSettings: { [key in SaveListSyncedSettings]: any } = {
         presentation: { name: "category.presentation", icon: "presentation", default: true },
         scripture: { name: "category.scripture", icon: "scripture", default: true }
     },
+    styles: {},
+    profiles: {},
     timers: {
         default: { name: "05:00", type: "counter", start: 300, end: 0 }
     },

@@ -2,20 +2,19 @@ import { get } from "svelte/store"
 import { OUTPUT } from "../../types/Channels"
 import { Main } from "../../types/IPC/Main"
 import type { ErrorLog } from "../../types/Main"
-import { keysToID, removeDuplicates, sortByName } from "../components/helpers/array"
-import { getActiveOutputs } from "../components/helpers/output"
+import { removeDuplicates } from "../components/helpers/array"
+import { getContrast } from "../components/helpers/color"
+import { getActiveOutputs, toggleOutputs } from "../components/helpers/output"
 import { sendMain } from "../IPC/main"
 import {
     activeTriggerFunction,
-    allOutputs,
     autosave,
     currentWindow,
     disabledServers,
     drawer,
-    errorHasOccured,
+    errorHasOccurred,
     focusedArea,
     os,
-    outputDisplay,
     outputs,
     quickSearchActive,
     resized,
@@ -29,7 +28,6 @@ import {
 import { convertAutosave } from "../values/autosave"
 import { send } from "./request"
 import { save } from "./save"
-import { getContrast } from "../components/helpers/color"
 
 export const DEFAULT_WIDTH = 290 // --navigation-width (global.css) | resized (stores.ts & defaults.ts)
 export const DEFAULT_DRAWER_HEIGHT = 300
@@ -77,15 +75,8 @@ export async function waitUntilValueIsDefined(value: () => any, intervalTime = 5
 }
 
 // hide output window
-export function hideDisplay(ctrlKey = true) {
-    if (!ctrlKey) return
-    outputDisplay.set(false)
-
-    const outputsList = getActiveOutputs(get(allOutputs), false)
-    outputsList.forEach((id) => {
-        const output = { id, ...get(allOutputs)[id] }
-        send(OUTPUT, ["DISPLAY"], { enabled: false, output })
-    })
+export function hideDisplay() {
+    toggleOutputs(null, { state: false })
 }
 
 export function mainClick(e: any) {
@@ -102,7 +93,15 @@ export function focusArea(e: any) {
     if (get(quickSearchActive) && !e.target.closest(".quicksearch")) quickSearchActive.set(false)
 
     if (e.target.closest(".menus") || e.target.closest(".contextMenu")) return
-    focusedArea.set(e.target.closest(".selectElem")?.id || e.target.querySelector(".selectElem")?.id || "")
+
+    const id = e.target.closest(".selectElem")?.id || e.target.querySelector(".selectElem")?.id
+    if (id) focusedArea.set(id)
+
+    // custom area without select elems
+    if (!id) {
+        const scriptureArea = e.target.closest(".scripture")
+        if (scriptureArea) focusedArea.set("scripture")
+    }
 }
 
 // auto save
@@ -123,14 +122,6 @@ export function startAutosave() {
         save(false, { autosave: true })
         startAutosave()
     }, saveInterval)
-}
-
-// get dropdown list
-export function getList(object: any, addEmptyValue = false) {
-    let list = sortByName(keysToID(object))
-    if (addEmptyValue) list = [{ id: null, name: "—" }, ...list]
-
-    return list
 }
 
 // error logger
@@ -161,7 +152,7 @@ export function logerror(err) {
         stack: err.reason?.stack || err.error?.stack,
     }
 
-    errorHasOccured.set(true) // always show close popup if this has happened (so the user can choose to not save)
+    errorHasOccurred.set(true) // always show close popup if this has happened (so the user can choose to not save)
     sendMain(Main.LOG_ERROR, log)
 }
 
@@ -211,13 +202,14 @@ export function togglePanels() {
 }
 
 // trigger functions in .svelte files (used to trigger big and old functions still in .svelte files)
-const triggerTimeout: NodeJS.Timeout | null = null
+let triggerTimeout: NodeJS.Timeout | null = null
 export function triggerFunction(id: string) {
     activeTriggerFunction.set(id)
 
     if (triggerTimeout) clearTimeout(triggerTimeout)
-    setTimeout(() => {
+    triggerTimeout = setTimeout(() => {
         activeTriggerFunction.set("")
+        triggerTimeout = null
     }, 100)
 }
 
@@ -226,4 +218,41 @@ export function triggerFunction(id: string) {
 export function isDarkTheme() {
     const contrastColor = getContrast(get(themes)[get(theme)]?.colors?.primary || "")
     return contrastColor === "#FFFFFF"
+}
+
+const throttled: { [key: string]: any } = {}
+export function throttle(id: string, value: any, callback: (v: any) => void, maxUpdatesPerSecond: number) {
+    // value = clone(value)
+
+    if (throttled[id] !== undefined) {
+        throttled[id] = value
+        return
+    }
+
+    callback(value)
+    throttled[id] = "WAITING"
+
+    setTimeout(() => {
+        if (throttled[id] !== "WAITING") callback(throttled[id])
+        delete throttled[id]
+    }, 1000 / maxUpdatesPerSecond)
+}
+
+const limited: Record<string, { timeout: NodeJS.Timeout; pending: ((v: boolean) => void) }> = {}
+export function hasNewerUpdate(id: string, maxUpdatesMs = 0): Promise<boolean> {
+    // resolve any existing updates as false as there is a newer one
+    if (limited[id]) {
+        clearTimeout(limited[id].timeout)
+        limited[id].pending(true)
+    }
+
+    return new Promise((resolve) => {
+        limited[id] = {
+            timeout: setTimeout(() => {
+                delete limited[id]
+                resolve(false)
+            }, maxUpdatesMs),
+            pending: resolve,
+        }
+    })
 }

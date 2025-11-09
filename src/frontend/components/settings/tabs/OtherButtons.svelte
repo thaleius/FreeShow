@@ -1,11 +1,9 @@
 <script>
     import { activePopup } from "../../../stores"
     import { translateText } from "../../../utils/language"
-    import Icon from "../../helpers/Icon.svelte"
-    import T from "../../helpers/T.svelte"
     import MaterialButton from "../../inputs/MaterialButton.svelte"
 </script>
 
-<MaterialButton icon="reset" style="width: 100%;padding: 15px;border-top: 2px solid var(--primary-lighter);background-color: rgb(255 0 0 / 0.25) !important;" on:click={() => activePopup.set("reset_all")} white>
+<MaterialButton icon="reset" style="width: 100%;padding: 15px;border-top: 2px solid var(--primary-lighter);" on:click={() => activePopup.set("reset_all")} white red>
     {translateText("settings.reset_all")}
 </MaterialButton>

@@ -1,5 +1,6 @@
 import { get } from "svelte/store"
 import { OUTPUT } from "../../types/Channels"
+import type { DropdownOptions } from "../../types/Input"
 import { Main } from "../../types/IPC/Main"
 import type { Dictionary } from "../../types/Settings"
 import { sortByName } from "../components/helpers/array"
@@ -48,8 +49,7 @@ function setLanguage(locale = "", init = false) {
                 if (!messages[key]) messages[key] = defaultStrings[key]
                 else {
                     Object.keys(defaultStrings[key]).forEach((stringId) => {
-                        if (!messages[key]) messages[key] = defaultStrings[key] || {}
-                        if (!messages[key]![stringId]) messages[key]![stringId] = defaultStrings[key][stringId]
+                        if (!(messages[key]![stringId] || "").trim()) messages[key]![stringId] = defaultStrings[key][stringId]
                     })
                 }
             })
@@ -81,9 +81,6 @@ export function translateText(text: string, _updater: any = null) {
 
     const dict = get(dictionary)
 
-    // WIP temporary fix until all values are changed
-    text = text.replace("$:", "").replace(":$", "")
-
     return text.replace(/\$?([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_-]+)/g, (match, key1, key2) => {
         if (dict[key1] && dict[key1][key2]) {
             return dict[key1][key2]
@@ -93,33 +90,7 @@ export function translateText(text: string, _updater: any = null) {
     })
 }
 
-// deprecated:
-const translate = (id: string, { parts = false } = {}) => {
-    if (typeof id !== "string") return ""
-
-    const d = get(dictionary)
-
-    if (!parts) {
-        const splittedKey = id.split(".")
-        return d[splittedKey[0]]?.[splittedKey[1]] || ""
-    }
-
-    if (!id.includes("$:")) return id
-
-    // TODO: use regex for this
-    const pre = id.slice(0, id.indexOf("$:"))
-    const suf = id.slice(id.indexOf(":$") + 2, id.length)
-    id = id.slice(id.indexOf("$:") + 2, id.indexOf(":$"))
-
-    const category: string = id.slice(0, id.indexOf("."))
-    const key = id.slice(id.indexOf(".") + 1, id.length)
-
-    id = d[category]?.[key] || `[${id}]`
-
-    return `${pre}${id}${suf}`
-}
-
-export { setLanguage, translate }
+export { setLanguage }
 
 // Chinese, Japanese, and Korean should use full width brackets: "（" / "）"
 const fullWidth = ["zh", "ja", "ko"]
@@ -128,7 +99,7 @@ export const getRightParenthesis = () => (fullWidth.find((id) => get(language).i
 
 // dropdown selector
 export function getLanguageList() {
-    let options: { label: string; value: string; prefix?: string }[] = Object.keys(languages).map((id) => ({ label: languages[id], value: id }))
+    let options: DropdownOptions = Object.keys(languages).map((id) => ({ label: languages[id], value: id }))
     options = sortByName(options, "label")
 
     // add flags after sorting

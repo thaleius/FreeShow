@@ -3,15 +3,18 @@
     import { Main } from "../../../types/IPC/Main"
     import type { MediaStyle } from "../../../types/Main"
     import { requestMain, sendMain } from "../../IPC/main"
-    import { activeProject, activeRename, dictionary, focusMode, media, outLocked, outputs, playingVideos, projects, videoMarkers, videosData, videosTime, volume } from "../../stores"
+    import { activeRename, focusMode, media, outLocked, outputs, playingVideos, videoMarkers, videosData, videosTime, volume } from "../../stores"
+    import { translateText } from "../../utils/language"
     import Icon from "../helpers/Icon.svelte"
     import T from "../helpers/T.svelte"
     import { enableSubtitle, encodeFilePath, getExtension, getFileName, removeExtension } from "../helpers/media"
     import { getActiveOutputs, setOutput } from "../helpers/output"
     import { joinTime, secondsToTime } from "../helpers/time"
-    import Button from "../inputs/Button.svelte"
+    import { getFirstOutputIdWithAudableBackground } from "../helpers/video"
+    import FloatingInputs from "../input/FloatingInputs.svelte"
     import HiddenInput from "../inputs/HiddenInput.svelte"
     import HoverButton from "../inputs/HoverButton.svelte"
+    import MaterialButton from "../inputs/MaterialButton.svelte"
     import MediaPicker from "../inputs/MediaPicker.svelte"
     import VideoSlider from "../output/VideoSlider.svelte"
     import { clearSlide } from "../output/clear"
@@ -48,6 +51,7 @@
         videoData.paused = true
         // trigger time update
         videoTime = 0
+        autoPause = false
     }
     function setVideoData() {
         videoData = { ...$videosData[outputId], muted: true }
@@ -60,10 +64,16 @@
         prevId = showId
 
         timeMarkersEnabled = !!$videoMarkers[showId]?.length || false
+        if (timeMarkersEnabled && manageSubtitles) manageSubtitles = false
     }
 
-    $: outputId = getActiveOutputs($outputs, false, true, true)[0]
-    $: currentOutput = $outputs[outputId]
+    $: allActiveOutputs = getActiveOutputs($outputs, true, true, true)
+    // $: outputId = allActiveOutputs[0]
+    // $: currentOutput = $outputs[outputId]
+
+    // background output
+    $: outputId = getFirstOutputIdWithAudableBackground(allActiveOutputs) || allActiveOutputs.find((id) => $outputs[id]?.out?.background) || allActiveOutputs[0]
+    $: currentOutput = outputId ? $outputs[outputId] || null : null
 
     // outBackground.subscribe(backgroundChanged)
     $: background = currentOutput?.out?.background || {}
@@ -99,7 +109,6 @@
     let autoPause = true
     let hasLoaded = false
 
-    let previewControls = false
     let manageSubtitles = false
     let timeMarkersEnabled = false
 
@@ -164,13 +173,19 @@
     //     })
     // }
 
+    let shouldLoop = false
+    let shouldBeMuted = false
+    $: videoType = mediaStyle.videoType || ""
+    $: if (showId) {
+        shouldLoop = videoType === "background" ? true : false
+        shouldBeMuted = videoType === "background" ? true : false
+    }
     function playVideo(startAt = 0) {
         if ($outLocked) return
 
-        let videoType = mediaStyle.videoType || ""
-        let loop = videoType === "background" ? true : false
-        let muted = videoType === "background" ? true : false
-        if (videoType === "foreground") clearSlide()
+        let loop = shouldLoop
+        let muted = shouldBeMuted
+        if (videoType === "foreground" || (videoType !== "background" && !shouldLoop)) clearSlide()
         let bg: any = { type, startAt, muted, loop, ...mediaStyle, ignoreLayer: videoType === "foreground" }
 
         if (type === "player") bg.id = showId
@@ -184,8 +199,6 @@
 
         // TODO: playing in multiple outputs will create unclearable "ghost" video
 
-        // clear slide text
-        if ($activeProject && $projects[$activeProject]?.shows?.find((a) => a.id === bg.path)) setOutput("slide", null)
         setOutput("background", bg)
     }
 
@@ -227,7 +240,7 @@
 
             let name = removeExtension(getFileName(path)).replaceAll(" ", "_")
             let id = name || uid(5)
-            a[showId].tracks.push({ lang: id, name: "", vtt: content })
+            a[showId].tracks.push({ lang: id, name, vtt: content })
 
             activeRename.set("subtitle_" + (a[showId].tracks.length - 1))
 
@@ -297,18 +310,20 @@
     }
 
     $: mediaStyleString = `width: 100%;height: 100%;filter: ${mediaStyle.filter || ""};object-fit: ${mediaStyle.fit === "blur" ? "contain" : mediaStyle.fit || "contain"};transform: scale(${mediaStyle.flipped ? "-1" : "1"}, ${mediaStyle.flippedY ? "-1" : "1"});`
-    $: mediaStyleBlurString = `position: absolute;filter: ${mediaStyle.filter || ""} blur(6px) opacity(0.3);object-fit: cover;width: 100%;height: 100%;transform: scale(${mediaStyle.flipped ? "-1" : "1"}, ${mediaStyle.flippedY ? "-1" : "1"});`
+    $: mediaStyleBlurString = `position: absolute;filter: ${mediaStyle.filter || ""} blur(${mediaStyle.fitOptions?.blurAmount ?? 6}px) opacity(${mediaStyle.fitOptions?.blurOpacity || 0.3});object-fit: cover;width: 100%;height: 100%;transform: scale(${mediaStyle.flipped ? "-1" : "1"}, ${mediaStyle.flippedY ? "-1" : "1"});`
 
     let blurVideo: HTMLVideoElement | undefined
     $: if (blurVideo && (videoTime < blurVideo.currentTime - 0.3 || videoTime > blurVideo.currentTime + 0.3)) blurVideo.currentTime = videoTime
     $: if (!videoData.paused && blurVideo?.paused) blurVideo.play()
     $: blurPausedState = videoData.paused
+
+    // WIP if paused on mount, blur video does not get paused
 </script>
 
 {#key showId}
-    <div class="media context #media_preview" style="flex: 1;overflow: hidden;">
+    <div id={showId} class="media context #media_preview" style="flex: 1;overflow: hidden;">
         <!-- TODO: info about: CTRL click to play at current pos -->
-        <HoverButton icon="play" size={10} on:click={(e) => playVideo(e.ctrlKey || e.metaKey ? videoTime : 0)} title={$dictionary.media?.play}>
+        <HoverButton icon="play" size={10} on:click={(e) => playVideo(e.ctrlKey || e.metaKey ? videoTime : 0)}>
             {#if type === "player"}
                 <Player id={showId} bind:videoData bind:videoTime preview />
             {:else}
@@ -337,153 +352,157 @@
             {/if}
         </HoverButton>
     </div>
+{/key}
+
+{#if !$focusMode}
+    {#if !playingInOutput && !manageSubtitles && !timeMarkersEnabled}
+        <FloatingInputs side="left">
+            <MaterialButton
+                title="media._loop"
+                on:click={() => {
+                    shouldLoop = !shouldLoop
+                }}
+            >
+                <Icon id="loop" size={1.2} white={!shouldLoop} />
+            </MaterialButton>
+
+            <!-- <div class="divider" /> -->
+
+            <MaterialButton
+                title={!shouldBeMuted ? "actions.mute" : "actions.unmute"}
+                disabled={$outLocked}
+                on:click={() => {
+                    shouldBeMuted = !shouldBeMuted
+                }}
+            >
+                <Icon id={!shouldBeMuted ? "volume" : "muted"} size={1.2} white={shouldBeMuted} />
+            </MaterialButton>
+        </FloatingInputs>
+    {/if}
 
     {#if playingInOutput ? tracks.length : manageSubtitles}
-        <div class="buttons" style="display: flex;">
-            <div class="markers">
-                {#if tracks.length}
+        <FloatingInputs side="left" style={playingInOutput ? `margin-bottom: ${$videoMarkers[showId]?.length ? 100 : 50}px;` : "max-width: 50%;"}>
+            {#if tracks.length}
+                <div class="scroll">
                     {#each tracks as track, i}
-                        <Button on:click={(e) => setActiveSubtitle(e, track.lang)} outline={subtitle === track.lang} class="context #video_subtitle{track.embedded ? '_embedded' : ''}" id={i.toString()} bold={false} center>
+                        <MaterialButton id={i.toString()} style="font-weight: normal;" isActive={subtitle === track.lang} class="context #video_subtitle{track.embedded ? '_embedded' : ''}" on:click={(e) => setActiveSubtitle(e, track.lang)}>
                             {#if playingInOutput}
                                 <p style="padding: 5px;">{track.name}</p>
                             {:else}
                                 <HiddenInput value={track.name} id={"subtitle_" + i} on:edit={changeSubtitleName} bind:edit />
                             {/if}
-                        </Button>
+                        </MaterialButton>
                     {/each}
-                {:else}
-                    <p style="opacity: 0.5;text-align: center;width: 100%;"><T id="empty.general" /></p>
-                {/if}
-            </div>
+                </div>
+            {/if}
 
             {#if !playingInOutput}
-                <div class="seperator" />
+                <div class="divider" />
 
-                <MediaPicker id="subtitles" filter={{ name: "Video Text Track", extensions: ["vtt", "srt"] }} on:picked={subtitlePicked} dark={false}>
-                    <Icon id="add" right />
-                    <T id="scripture.local" />
+                <MediaPicker id="subtitles" title={translateText("scripture.local")} filter={{ name: "Video Text Track", extensions: ["vtt", "srt"] }} on:picked={subtitlePicked} dark={false}>
+                    <Icon id="add" right={!tracks.length} />
+                    {#if !tracks.length}<T id="scripture.local" />{/if}
+                    <!-- <Icon id="captions" right={!tracks.length} />
+                    {#if !tracks.length}<T id="actions.manage_subtitles" />{/if} -->
                 </MediaPicker>
+                <!-- <MaterialFilePicker label="scripture.local" style="flex: 1;" icon="add" value="" filter={{ name: "Video Text Track", extensions: ["vtt", "srt"] }} on:change={subtitlePicked} /> -->
             {/if}
-        </div>
+        </FloatingInputs>
     {/if}
 
     {#if playingInOutput ? $videoMarkers[showId]?.length : timeMarkersEnabled}
-        <div class="buttons" style="display: flex;">
-            <div class="markers">
-                {#if $videoMarkers[showId]?.length}
+        <FloatingInputs side="left" style={playingInOutput || manageSubtitles ? "margin-bottom: 50px;" : "max-width: 50%;"}>
+            {#if $videoMarkers[showId]?.length}
+                <div class="scroll">
                     {#each $videoMarkers[showId] as marker, i}
-                        <Button
-                            class="context #video_marker"
+                        <MaterialButton
                             id={i}
+                            style="font-weight: normal;"
+                            class="context #video_marker"
                             on:click={() => {
                                 if (!edit) {
                                     playVideo(marker.time || 0)
                                 }
                             }}
-                            bold={false}
-                            center
                         >
                             <p style="display: flex;align-items: center;">
                                 <HiddenInput value={marker.name} id={"marker_" + i} on:edit={changeName} bind:edit />
                                 <span style="opacity: 0.7;">{joinTime(secondsToTime(marker.time))}</span>
                             </p>
-                        </Button>
+                        </MaterialButton>
                     {/each}
-                {:else}
-                    <p style="opacity: 0.5;text-align: center;width: 100%;"><T id="empty.general" /></p>
-                {/if}
-            </div>
-
-            {#if previewControls && !playingInOutput}
-                <div class="seperator" />
-
-                <Button on:click={addMarker}>
-                    <Icon id="add" right />
-                    <p><T id="actions.add_time_marker" /></p>
-                </Button>
+                </div>
             {/if}
-        </div>
+
+            {#if !playingInOutput}
+                <div class="diviver" />
+
+                <MaterialButton icon="add" title="actions.add_time_marker" on:click={addMarker}>
+                    {#if !$videoMarkers[showId]?.length}<T id="actions.add_time_marker" />{/if}
+                </MaterialButton>
+            {/if}
+        </FloatingInputs>
     {/if}
 
     {#if playingInOutput}
         <MediaControls {currentOutput} {outputId} big />
-    {:else if previewControls}
-        <div class="buttons" style="display: flex;">
-            <Button
-                style="flex: 0;"
-                center
-                title={videoData.paused ? $dictionary.media?.play : $dictionary.media?.pause}
-                on:click={() => {
-                    autoPause = false
-                    videoData.paused = !videoData.paused
-                }}
-            >
-                <Icon id={videoData.paused ? "play" : "pause"} white={videoData.paused} size={1.2} />
-            </Button>
-            <VideoSlider bind:videoData bind:videoTime />
-            <Button style="flex: 0;" center title={videoData.muted ? $dictionary.actions?.unmute : $dictionary.actions?.mute} on:click={() => (videoData.muted = !videoData.muted)}>
-                <Icon id={videoData.muted ? "muted" : "volume"} white={videoData.muted} size={1.2} />
-            </Button>
+    {:else}
+        <FloatingInputs arrow let:open>
+            <div slot="menu" style="display: flex;min-width: 500px;">
+                <MaterialButton
+                    title={videoData.paused ? "media.play" : "media.pause"}
+                    on:click={() => {
+                        autoPause = false
+                        videoData.paused = !videoData.paused
+                    }}
+                >
+                    <Icon id={videoData.paused ? "play" : "pause"} white={videoData.paused} />
+                </MaterialButton>
 
-            <div class="seperator" />
+                <VideoSlider bind:videoData bind:videoTime />
 
-            <Button
-                style="flex: 0;"
-                title={$dictionary.actions?.manage_subtitles}
+                <MaterialButton title={videoData.muted ? "actions.unmute" : "actions.mute"} on:click={() => (videoData.muted = !videoData.muted)}>
+                    <Icon id={videoData.muted ? "muted" : "volume"} white={videoData.muted} />
+                </MaterialButton>
+
+                <div class="divider"></div>
+            </div>
+
+            <MaterialButton
+                isActive={manageSubtitles}
+                title="actions.manage_subtitles"
                 on:click={() => {
                     manageSubtitles = !manageSubtitles
                     if (timeMarkersEnabled) timeMarkersEnabled = false
                 }}
-                center
             >
-                <Icon id="captions" white={!manageSubtitles} size={1.2} />
-            </Button>
+                <Icon id="captions" white={!tracks.length} size={1.2} />
+            </MaterialButton>
 
-            <Button
-                style="flex: 0;"
-                title={$dictionary.actions?.toggle_time_marker}
+            {#if open}
+                <div class="divider"></div>
+            {/if}
+
+            <MaterialButton
+                isActive={timeMarkersEnabled}
+                title="actions.toggle_time_marker"
                 on:click={() => {
                     timeMarkersEnabled = !timeMarkersEnabled
                     if (manageSubtitles) manageSubtitles = false
                 }}
-                center
             >
-                <Icon id="timeMarker" white={!timeMarkersEnabled} size={1.2} />
-            </Button>
-        </div>
-    {:else if !$focusMode && !playingInOutput}
-        <Button on:click={() => (previewControls = true)} style="background-color: var(--primary-darkest);" center dark>
-            <Icon id="eye" right />
-            <T id="preview.enable_controls" />
-        </Button>
+                <Icon id="timeMarker" white={!$videoMarkers[showId]?.length} size={1.2} />
+            </MaterialButton>
+        </FloatingInputs>
     {/if}
-{/key}
+{/if}
 
 <style>
-    .buttons {
-        background-color: var(--primary-darkest);
-    }
-
-    .buttons :global(.slider input) {
-        background-color: var(--primary);
-    }
-
-    .seperator {
-        width: 1px;
-        height: 100%;
-        background-color: var(--primary);
-    }
-
-    .markers {
-        flex: 1;
-        /* padding: 0 10px; */
+    .scroll {
         display: flex;
-        justify-content: space-between;
-        align-items: center;
         overflow-x: auto;
     }
-
-    .markers :global(button) {
-        flex: 1;
+    .scroll :global(button) {
+        overflow: initial;
     }
 </style>

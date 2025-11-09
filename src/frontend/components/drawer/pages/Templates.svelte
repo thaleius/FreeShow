@@ -173,10 +173,15 @@
         flex: 1;
         padding: 5px;
         place-content: flex-start;
+
+        padding-bottom: 60px;
     }
 
     .grid :global(.selectElem) {
         width: var(--width);
         outline-offset: -3px;
+    }
+    .grid :global(.isSelected) {
+        border-radius: 0 !important;
     }
 </style>

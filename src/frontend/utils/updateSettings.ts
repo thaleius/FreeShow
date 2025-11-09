@@ -3,14 +3,16 @@ import { Main } from "../../types/IPC/Main"
 import type { Output } from "../../types/Output"
 import type { Themes } from "../../types/Settings"
 import { clone, keysToID } from "../components/helpers/array"
-import { checkWindowCapture, displayOutputs, setOutput } from "../components/helpers/output"
+import { checkWindowCapture, setOutput, toggleOutputs } from "../components/helpers/output"
 import { defaultThemes } from "../components/settings/tabs/defaultThemes"
 import { sendMain } from "../IPC/main"
 import {
     actionTags,
+    actions,
     activePopup,
     activeProject,
     alertUpdates,
+    audioChannelsData,
     audioFolders,
     audioPlaylists,
     audioStreams,
@@ -19,7 +21,7 @@ import {
     calendarAddShow,
     categories,
     companion,
-    chumsSyncCategories,
+    contentProviderData,
     customMetadata,
     customizedIcons,
     dataPath,
@@ -28,8 +30,11 @@ import {
     drawer,
     drawerTabsData,
     driveData,
+    effects,
     effectsLibrary,
     emitters,
+    eqPresets,
+    equalizerConfig,
     formatNewShow,
     fullColors,
     gain,
@@ -45,13 +50,14 @@ import {
     mediaOptions,
     mediaTags,
     metronome,
-    actions,
     openedFolders,
+    os,
     outLocked,
     overlayCategories,
     overlays,
     playerVideos,
     ports,
+    profiles,
     projectView,
     remotePassword,
     resized,
@@ -73,9 +79,7 @@ import {
     version,
     videoMarkers,
     videosData,
-    videosTime,
-    effects,
-    profiles
+    videosTime
 } from "../stores"
 import { OUTPUT } from "./../../types/Channels"
 import type { SaveListSettings, SaveListSyncedSettings } from "./../../types/Save"
@@ -107,32 +111,12 @@ export function updateSettings(data: any) {
 
     // output
     if (data.outputs) {
-        const outputsList: (Output & { id: string })[] = keysToID(data.outputs)
-
-        // get active "ghost" key outputs
-        const activeKeyOutputs: string[] = []
-        outputsList.forEach((output) => {
-            if (output.keyOutput && !output.isKeyOutput) activeKeyOutputs.push(output.id)
-        })
-
-        // remove "ghost" key outputs (they were not removed in versions pre 0.9.6)
-        const allOutputs = get(outputs)
-        let outputsUpdated = false
-        Object.keys(allOutputs).forEach((outputId) => {
-            const output = allOutputs[outputId]
-            if (!output.isKeyOutput || activeKeyOutputs.includes(outputId)) return
-
-            delete allOutputs[outputId]
-            outputsUpdated = true
-        })
-        if (outputsUpdated) outputs.set(allOutputs)
-
         // wait until content is loaded
         setTimeout(() => {
             restartOutputs()
-            if (get(autoOutput)) setTimeout(() => displayOutputs({}, true), 500)
-            setTimeout(() => checkWindowCapture(true), 1000)
-        }, 1500)
+            if (get(autoOutput)) setTimeout(() => toggleOutputs(null, { autoStartup: true }), get(os).platform === "darwin" ? 1500 : 500)
+            setTimeout(() => checkWindowCapture(true), get(os).platform === "darwin" ? 2000 : 1000)
+        }, get(os).platform === "darwin" ? 2500 : 1500)
     }
 
     // remote
@@ -176,14 +160,8 @@ export function restartOutputs(specificId = "") {
     const outputIds = specificId ? [specificId] : allOutputs.filter((a) => a.enabled).map(({ id }) => id)
 
     outputIds.forEach((id: string) => {
-        let output: Output = get(outputs)[id]
+        const output: Output = get(outputs)[id]
         if (!output) return
-
-        // key output styling
-        if (output.isKeyOutput) {
-            const parentOutput = allOutputs.find((a) => a.keyOutput === id)
-            if (parentOutput) output = { ...parentOutput, ...output, id }
-        }
 
         // , rate: get(special).previewRate || "auto"
         send(OUTPUT, ["CREATE"], { ...output, id })
@@ -210,11 +188,11 @@ export function updateThemeValues(themeValues: Themes) {
         document.documentElement.style.setProperty("--font-" + key, value)
     })
 
-    // border radius
-    if (!themeValues.border) themeValues.border = {}
-    // set to 0 if nothing is set
-    if (themeValues.border?.radius === undefined) themeValues.border.radius = "0"
-    Object.entries(themeValues.border).forEach(([key, value]) => document.documentElement.style.setProperty("--border-" + key, value))
+    // // border radius
+    // if (!themeValues.border) themeValues.border = {}
+    // // set to 0 if nothing is set
+    // if (themeValues.border?.radius === undefined) themeValues.border.radius = "0"
+    // Object.entries(themeValues.border).forEach(([key, value]) => document.documentElement.style.setProperty("--border-" + key, value))
 }
 
 const updateList: { [key in SaveListSettings | SaveListSyncedSettings]: any } = {
@@ -306,6 +284,7 @@ const updateList: { [key in SaveListSettings | SaveListSyncedSettings]: any } = 
     transitionData: (v: any) => transitionData.set(v),
     volume: (v: any) => volume.set(v),
     gain: (v: any) => gain.set(v),
+    audioChannelsData: (v: any) => audioChannelsData.set(v),
     emitters: (v: any) => emitters.set(v),
     midiIn: (v: any) => actions.set(v),
     videoMarkers: (v: any) => videoMarkers.set(v),
@@ -316,6 +295,8 @@ const updateList: { [key in SaveListSettings | SaveListSyncedSettings]: any } = 
     driveData: (v: any) => driveData.set(v),
     calendarAddShow: (v: any) => calendarAddShow.set(v),
     metronome: (v: any) => metronome.set(v),
+    equalizerConfig: (v: any) => equalizerConfig.set(v),
+    eqPresets: (v: any) => eqPresets.set(v),
     effectsLibrary: (v: any) => effectsLibrary.set(v),
     globalTags: (v: any) => globalTags.set(v),
     customMetadata: (v: any) => customMetadata.set(v),
@@ -330,7 +311,7 @@ const updateList: { [key in SaveListSettings | SaveListSyncedSettings]: any } = 
     },
     special: (v: any) => {
         if (v.capitalize_words === undefined) v.capitalize_words = "Jesus, Lord" // God
-        if (v.autoUpdates !== false) sendMain(Main.AUTO_UPDATE)
+        if (v.autoUpdates) sendMain(Main.AUTO_UPDATE)
         // don't backup when just initialized (or reset)
         if (!v.autoBackupPrevious) v.autoBackupPrevious = Date.now()
         if (v.startupProjectsList) {
@@ -340,8 +321,18 @@ const updateList: { [key in SaveListSettings | SaveListSyncedSettings]: any } = 
             showRecentlyUsedProjects.set(false)
         }
 
+        // DEPRECATED (migrate)
+        if (v.pcoLocalAlways) {
+            contentProviderData.update((a) => ({ ...a, planningcenter: { localAlways: true } }))
+            delete v.pcoLocalAlways
+        }
+
         special.set(v)
     },
-    chumsSyncCategories: (v: any) => chumsSyncCategories.set(v),
+    // @ts-ignore - DEPERACTED (migrate)
+    chumsSyncCategories: (v: any) => {
+        if (v?.length > 1) contentProviderData.set({ ...get(contentProviderData), churchApps: { syncCategories: v } })
+    },
+    contentProviderData: (v: any) => contentProviderData.set(v),
     effects: (a: any) => effects.set(a)
 }

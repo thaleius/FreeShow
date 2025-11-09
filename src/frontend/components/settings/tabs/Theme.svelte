@@ -1,13 +1,12 @@
 <script lang="ts">
-    import { onDestroy, onMount } from "svelte"
+    import { onDestroy } from "svelte"
     import { outputs, selected, theme, themes } from "../../../stores"
     import { updateThemeValues } from "../../../utils/updateSettings"
     import { clone } from "../../helpers/array"
-    import { getSystemFontsList } from "../../helpers/fonts"
     import { history } from "../../helpers/history"
     import Title from "../../input/Title.svelte"
     import MaterialColorInput from "../../inputs/MaterialColorInput.svelte"
-    import MaterialDropdown from "../../inputs/MaterialDropdown.svelte"
+    import MaterialFontDropdown from "../../inputs/MaterialFontDropdown.svelte"
     import MaterialNumberInput from "../../inputs/MaterialNumberInput.svelte"
 
     const colors: string[] = [
@@ -68,18 +67,10 @@
             return a
         })
     }
-
-    let fontsList: { label: string; value: string; style: string }[] = []
-    onMount(async () => {
-        fontsList = await getSystemFontsList()
-    })
 </script>
 
-<MaterialDropdown options={fontsList} value={$theme === "default" ? "" : $themes[$theme]?.font?.family || ""} label="settings.font_family" on:change={(e) => updateTheme(e.detail || "", "family", "font")} allowEmpty />
+<MaterialFontDropdown label="settings.font_family" value={$theme === "default" ? "" : $themes[$theme]?.font?.family || ""} on:change={(e) => updateTheme(e.detail || "", "family", "font")} allowEmpty />
 <MaterialNumberInput label="settings.font_size" value={Number($themes[$theme]?.font?.size.replace("em", "") ?? 1) * 10} min={5} max={20} on:change={(e) => updateTheme(e.detail / 10 + "em", "size", "font")} />
-
-<!-- WIP deprecated -->
-<MaterialNumberInput label="settings.border_radius" value={Number($themes[$theme]?.border?.radius?.replace("px", "") || 0)} max={30} step={5} on:change={(e) => updateTheme(e.detail + "px", "radius", "border")} />
 
 <Title label="settings.colors" icon="color" />
 

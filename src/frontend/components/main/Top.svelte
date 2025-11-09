@@ -1,11 +1,12 @@
 <script type="ts">
     import { slide } from "svelte/transition"
-    import { activeEdit, activeProfile, activeShow, dictionary, drawTool, os, outputDisplay, outputs, paintCache, profiles, saved, shows } from "../../stores"
+    import { activeEdit, activeProfile, activeShow, dictionary, drawSettings, drawTool, os, outputDisplay, outputs, paintCache, profiles, saved, shows } from "../../stores"
     import Icon from "../helpers/Icon.svelte"
-    import { displayOutputs } from "../helpers/output"
+    import { toggleOutputs } from "../helpers/output"
     import T from "../helpers/T.svelte"
     import Button from "../inputs/Button.svelte"
     import TopButton from "../inputs/TopButton.svelte"
+    import { translateText } from "../../utils/language"
 
     export let isWindows = false
 
@@ -23,6 +24,8 @@
     function toggleOutput(e: any) {
         if (cancelConfirmTimeout) clearTimeout(cancelConfirmTimeout)
 
+        const forceKey = e.ctrlKey || e.metaKey
+
         if (!$outputDisplay || confirm) {
             if (confirm) {
                 // prevent displaying just after close
@@ -31,11 +34,10 @@
             }
 
             confirm = false
-            displayOutputs(e)
+            toggleOutputs(null, { force: forceKey })
             return
         }
 
-        let forceKey = e.ctrlKey || e.metaKey
         if (forceKey) return
 
         confirm = true
@@ -69,18 +71,17 @@
     <span>
         <TopButton id="show" />
         <TopButton id="edit" disabled={editDisabled} />
-        <!-- <TopButton id="draw" /> -->
         <TopButton id="stage" />
     </span>
     <span style="width: var(--navigation-width);justify-content: flex-end;">
-        <!-- <TopButton id="stage" hideLabel /> -->
-        <TopButton id="draw" red={$drawTool === "fill" || $drawTool === "zoom" || !!($drawTool === "paint" && $paintCache?.length)} hideLabel />
+        <TopButton id="draw" red={$drawTool === "fill" || ($drawTool === "zoom" && $drawSettings.zoom?.size !== 100) || !!($drawTool === "paint" && $paintCache?.length)} hideLabel />
         {#if !settingsDisabled}
             <TopButton id="settings" hideLabel />
         {/if}
+
         <Button
             id="output_window_button"
-            title={($outputDisplay ? (confirm ? $dictionary.menu?.again_confirm : $dictionary.menu?._title_display_stop) : $dictionary.menu?._title_display) + " [Ctrl+O]"}
+            title={translateText(`menu.${$outputDisplay ? (confirm ? "again_confirm" : "_title_display_stop") : "_title_display"} [Ctrl+O]`, $dictionary)}
             style={$outputDisplay || disableClick ? "" : "border-bottom: 2px solid var(--secondary);"}
             on:click={toggleOutput}
             class="context #output display {$outputDisplay ? 'on' : 'off'}"
@@ -151,10 +152,10 @@
 
     .unsaved {
         position: absolute;
-        inset-inline-start: 0;
+        left: 0;
         height: 100%;
         width: 5px;
-        background-color: rgb(255 0 0 / 0.25);
+        background-color: var(--red);
     }
 
     /* .logo {

@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { actions, activePage, activePopup, activeShow, dictionary, groups, guideActive, outLocked, outputs, overlayTimers, playingAudio, playingMetronome, resized, slideTimers, special, styles } from "../../../stores"
+    import { actions, activePage, activePopup, activeShow, activeTimers, groups, guideActive, outLocked, outputs, overlayTimers, playingAudio, playingMetronome, resized, slideTimers, special } from "../../../stores"
     import { DEFAULT_WIDTH, isDarkTheme } from "../../../utils/common"
     import { formatSearch } from "../../../utils/search"
     import { previewCtrlShortcuts, previewShortcuts } from "../../../utils/shortcuts"
@@ -12,13 +12,16 @@
     import { getFewestOutputLines, getItemWithMostLines, playNextGroup, updateOut } from "../../helpers/showActions"
     import { _show } from "../../helpers/shows"
     import { newSlideTimer } from "../../helpers/tick"
+    import { getFirstOutputIdWithAudableBackground } from "../../helpers/video"
     import Button from "../../inputs/Button.svelte"
+    import MaterialButton from "../../inputs/MaterialButton.svelte"
     import ShowActions from "../ShowActions.svelte"
     import Audio from "../tools/Audio.svelte"
     import MediaControls from "../tools/MediaControls.svelte"
     import NextTimer from "../tools/NextTimer.svelte"
     import Overlay from "../tools/Overlay.svelte"
     import Show from "../tools/Show.svelte"
+    import TimerControls from "../tools/TimerControls.svelte"
     import AudioMeter from "./AudioMeter.svelte"
     import ClearButtons from "./ClearButtons.svelte"
     import MultiOutputs from "./MultiOutputs.svelte"
@@ -29,14 +32,9 @@
     let currentOutput: any = {}
     $: currentOutput = outputId ? $outputs[outputId] || {} : {}
 
-    $: backgroundOutputId = allActiveOutputs.find((id) => getLayersFromId(id).includes("background")) || outputId
+    $: allOutputsWithBackground = allActiveOutputs.filter((id) => $outputs[id]?.out?.background)
+    $: backgroundOutputId = getFirstOutputIdWithAudableBackground(allOutputsWithBackground) || allOutputsWithBackground[0] || outputId
     $: currentBgOutput = backgroundOutputId ? $outputs[backgroundOutputId] || null : null
-
-    function getLayersFromId(id: string) {
-        const layers = $styles[$outputs[id]?.style || ""]?.layers
-        if (Array.isArray(layers)) return layers
-        return ["background"]
-    }
 
     let numberKeyTimeout: NodeJS.Timeout | null = null
     let previousNumberKey = ""
@@ -162,7 +160,7 @@
     let activeClear: string | null = null
     let autoChange = true
     $: if (outputId) autoChange = true
-    $: if (autoChange && ($outputs || $overlayTimers || $playingMetronome)) {
+    $: if (autoChange && ($outputs || $overlayTimers || $activeTimers || $playingMetronome)) {
         let active = getActiveClear(
             !isOutCleared("transition"),
             Object.keys($playingAudio).length || $playingMetronome,
@@ -173,7 +171,7 @@
         if (active !== activeClear) activeClear = active
     }
     // enable autochange again if active has no value
-    $: if (!autoChange && ($outputs || $playingAudio || $playingMetronome || $overlayTimers)) checkStillActive()
+    $: if (!autoChange && ($outputs || $playingAudio || $playingMetronome || $overlayTimers || $activeTimers)) checkStillActive()
     function checkStillActive() {
         if (activeClear === "nextTimer" && isOutCleared("transition")) autoChange = true
         else if (activeClear === "audio" && !Object.keys($playingAudio).length && !$playingMetronome) autoChange = true
@@ -206,7 +204,7 @@
     let timer: any = {}
     $: timer = outputId && $slideTimers[outputId] ? $slideTimers[outputId] : {}
     $: Object.entries($outputs).forEach(([id, output]) => {
-        if ((Object.keys($outputs)?.length > 1 && !output.enabled) || output.keyOutput || output.stageOutput) return
+        if ((Object.keys($outputs)?.length > 1 && !output.enabled) || output.stageOutput) return
         if (!output.out?.transition || $slideTimers[id]?.timer) return
 
         const data = output.out.transition
@@ -246,12 +244,10 @@
 
 <div id="previewArea" class="main">
     {#if enablePreview}
-        <PreviewOutputs bind:currentOutputId={outputId} />
+        <PreviewOutputs />
 
         <div class="top">
-            <Button class="hide" on:click={() => (enablePreview = false)} style="z-index: 2;" title={$dictionary.preview?._hide_preview} center>
-                <Icon id="hide" white />
-            </Button>
+            <MaterialButton class="hide" icon="hide" style="z-index: 2;" title="preview._hide_preview" on:click={() => (enablePreview = false)} />
             <!-- disable before hiding: disableTransitions={!enablePreview} -->
             <MultiOutputs />
             <AudioMeter />
@@ -282,8 +278,13 @@
             {:else if updatedActiveClear === "audio"}
                 <Audio />
             {:else if updatedActiveClear === "nextTimer"}
-                <NextTimer {currentOutput} timer={timer?.timer ? timer : { time: 0, paused: true, timer: {} }} />
-                <!-- WIP display overlay timer time -->
+                {#if Object.keys($overlayTimers).length}
+                    <!-- WIP display overlay timer time -->
+                {:else if timer?.timer}
+                    <NextTimer {currentOutput} timer={timer?.timer ? timer : { time: 0, paused: true, timer: {} }} />
+                {:else if $activeTimers}
+                    <TimerControls />
+                {/if}
             {/if}
         </div>
     {/if}
@@ -306,19 +307,24 @@
     border: none;
   } */
 
-    .top :global(.hide) {
+    .top :global(.hide:not(.contained):not(.isActive):not(:disabled)) {
         position: absolute;
         top: 10px;
         inset-inline-end: 16px;
         z-index: 1;
-        background-color: rgb(0 0 0 / 0.6) !important;
-        border: 1px solid rgb(255 255 255 / 0.3);
+        background-color: rgb(0 0 0 / 0.3) !important;
+        border: 1px solid rgb(255 255 255 / 0.15) !important;
         width: 40px;
         height: 40px;
         opacity: 0;
-        transition: opacity 0.2s;
+        transition:
+            opacity 0.2s,
+            background-color 0.2s;
     }
-    .top:hover > :global(.hide) {
+    .top :global(.hide:not(.contained):not(.isActive):not(:disabled):hover) {
+        background-color: rgb(0 0 0 / 0.7) !important;
+    }
+    .top:hover > :global(.hide:not(.contained):not(.isActive):not(:disabled)) {
         opacity: 1;
     }
 

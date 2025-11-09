@@ -1,9 +1,7 @@
 import { get } from "svelte/store"
 import { uid } from "uid"
-import { Main } from "../../types/IPC/Main"
 import type { Show } from "../../types/Show"
 import type { ClientMessage } from "../../types/Socket"
-import { fetchBible, loadBible, receiveBibleContent } from "../components/drawer/bible/scripture"
 import { clone, keysToID, removeDeleted } from "../components/helpers/array"
 import { getBase64Path, getThumbnailPath, mediaSize } from "../components/helpers/media"
 import { getActiveOutputs, setOutput } from "../components/helpers/output"
@@ -12,12 +10,12 @@ import { getLayoutRef } from "../components/helpers/show"
 import { updateOut } from "../components/helpers/showActions"
 import { _show } from "../components/helpers/shows"
 import { clearAll } from "../components/output/clear"
-import { destroyMain, receiveMain } from "../IPC/main"
 import { REMOTE } from "./../../types/Channels"
-import { activeProject, dictionary, driveData, folders, language, openedFolders, outLocked, outputs, overlays, projects, remotePassword, scriptures, scripturesCache, shows, showsCache, styles } from "./../stores"
-import { waitUntilValueIsDefined } from "./common"
+import { activeProject, connections, dictionary, driveData, folders, language, openedFolders, outLocked, outputs, overlays, projects, remotePassword, scriptures, shows, showsCache, styles } from "./../stores"
+import { translateText } from "./language"
 import { send } from "./request"
 import { sendData, setConnectedState } from "./sendData"
+import { loadJsonBible } from "../components/drawer/bible/scripture"
 
 // REMOTE
 
@@ -122,7 +120,7 @@ export const receiveREMOTE: any = {
             if (out && out.id !== "temp") {
                 id = out.id
                 oldOutSlide = id
-                msg.data.show = await convertBackgrounds(get(showsCache)[id])
+                msg.data.show = await convertBackgrounds(get(showsCache)[id], false, true)
                 msg.data.show.id = id
             }
 
@@ -147,7 +145,7 @@ export const receiveREMOTE: any = {
         // get names
         msg.data.forEach((project) => {
             project.shows.forEach((show) => {
-                if (show.type === "overlay") show.name = get(overlays)[show.id]?.name || get(dictionary).main?.unnamed
+                if (show.type === "overlay") show.name = get(overlays)[show.id]?.name || translateText("main.unnamed")
             })
 
             return project
@@ -159,73 +157,48 @@ export const receiveREMOTE: any = {
         const { id, bookKey, chapterKey, bookIndex, chapterIndex } = msg.data || {}
         if (!id) return
 
-        const scriptureEntry: any = get(scriptures)[id]
-        const isApi = scriptureEntry?.api === true
+        const jsonBible = await loadJsonBible(id)
+        if (!jsonBible) return
 
-        if (isApi) {
-            const apiId = scriptureEntry?.id || id
-            
-            if (bookKey && !chapterKey) {
-                // Fetch chapters only (mirror drawer behavior: some APIs include a 0 entry)
-                let chapters: any[] = await fetchBible("chapters", apiId, { 
-                    bookId: bookKey, 
-                    versesList: [], 
-                    chapterId: `${bookKey}.1` 
-                })
-                if (chapters?.[0] && Number.parseInt(chapters[0].number, 10) === 0) {
-                    chapters = chapters.slice(1)
-                }
-                const mapped = (chapters || []).map((c: any, i: number) => ({
-                    number: Number.isFinite(Number.parseInt(c.number, 10)) ? Number.parseInt(c.number, 10) : i + 1,
-                    keyName: c.keyName,
-                }))
-                msg.data.bibleUpdate = { kind: "chapters", id, bookIndex, chapters: mapped }
-                return msg
-            }
-            
-            if (bookKey && chapterKey) {
-                // Fetch verses only
-                const versesMeta: any[] = await fetchBible("verses", apiId, { 
-                    bookId: bookKey, 
-                    chapterId: chapterKey, 
-                    versesList: [] 
-                })
-                const versesTextResp: any[] = await fetchBible("versesText", apiId, { 
-                    bookId: bookKey, 
-                    chapterId: chapterKey, 
-                    versesList: versesMeta 
-                })
-                // Build the verses consistent with drawer's convertVerses (index-based mapping)
-                const mappedVerses = (versesTextResp || []).map((d: any, i: number) => ({
-                    number: (versesMeta?.[i]?.number) || i + 1,
-                    text: d?.content || d?.text || "",
-                }))
-                msg.data.bibleUpdate = { kind: "verses", id, bookIndex, chapterIndex, verses: mappedVerses }
-                return msg
-            }
-            
-            // Initial: prefer cached books2 from scriptures store; fallback to fetch
-            const objectId = Object.entries(get(scriptures)).find(([_id, a]: any) => a?.id === id)?.[0] || id
-            const cachedBooks: any[] = (get(scriptures) as any)[objectId]?.books2 || []
-            const books: any[] = cachedBooks.length
-                ? cachedBooks
-                : await fetchBible("books", apiId, { versesList: [], bookId: "GEN", chapterId: "GEN.1" })
-            const mappedBooks = (books || []).map((b: any, i: number) => ({
-                name: b.name,
-                number: b.number || i + 1,
-                keyName: b.keyName,
-                chapters: [],
-            }))
-            msg.data.bible = { books: mappedBooks }
+        const scriptureData: any = get(scriptures)[id]
+        const isApi = scriptureData?.api === true
+
+        if (!isApi) {
+            msg.data.bible = jsonBible.data
             return msg
         }
 
-        const listenerId = receiveMain(Main.BIBLE, receiveBibleContent)
-        loadBible(id, 0, clone(get(scriptures)[id] || {}))
-        const bible = await waitUntilValueIsDefined(() => get(scripturesCache)[id])
-        destroyMain(listenerId)
+        if (bookKey && !chapterKey) {
+            const bookData = await jsonBible.getBook(bookKey)
+            const mapped = (bookData.data.chapters || []).map((c) => ({
+                number: c.number,
+                keyName: c.number,
+            }))
+            msg.data.bibleUpdate = { kind: "chapters", id, bookIndex, chapters: mapped }
+            return msg
+        }
 
-        msg.data.bible = bible
+        if (bookKey && chapterKey) {
+            const bookData = await jsonBible.getBook(bookKey)
+            const chapterData = await bookData.getChapter(chapterKey)
+            const versesData = chapterData.data.verses
+            const mappedVerses = versesData.map((v) => ({
+                number: v.number,
+                text: v.text,
+                keyName: v.number,
+            }))
+            msg.data.bibleUpdate = { kind: "verses", id, bookIndex, chapterIndex, verses: mappedVerses }
+            return msg
+        }
+
+        const books = jsonBible.data.books
+        const mappedBooks = (books || []).map((b) => ({
+            name: b.name,
+            number: b.number,
+            keyName: b.id,
+            chapters: [],
+        }))
+        msg.data.bible = { books: mappedBooks }
         return msg
     }
 }
@@ -243,17 +216,17 @@ export async function initializeRemote(id: string) {
 
     // Get current output state
     const currentOutput: any = get(outputs)[getActiveOutputs()[0]]
-    const styleRes = currentOutput?.style ? 
-        get(styles)[currentOutput?.style]?.aspectRatio || get(styles)[currentOutput?.style]?.resolution : 
+    const styleRes = currentOutput?.style ?
+        get(styles)[currentOutput?.style]?.aspectRatio || get(styles)[currentOutput?.style]?.resolution :
         null
 
     const outSlide = currentOutput?.out?.slide
-    const out: any = { 
-        slide: outSlide ? outSlide.index : null, 
-        layout: outSlide?.layout || null, 
-        styleRes 
+    const out: any = {
+        slide: outSlide ? outSlide.index : null,
+        layout: outSlide?.layout || null,
+        styleRes
     }
-    
+
     if (out.slide !== null && outSlide?.id && outSlide?.id !== "temp") {
         oldOutSlide = outSlide.id
         // Output & thumbnail
@@ -265,7 +238,7 @@ export async function initializeRemote(id: string) {
             window.api.send(REMOTE, await receiveREMOTE.SHOW({ channel: "SHOW", id, data: oldOutSlide }))
         })
     }
-    
+
     // Send targeted initial state to this connection
     // Use sendData so the proper OUT payload is constructed (handles scripture 'temp' etc.)
     sendData(REMOTE, { id, channel: "OUT" })
@@ -276,11 +249,11 @@ export async function initializeRemote(id: string) {
     send(REMOTE, ["SCRIPTURE"], get(scriptures))
 }
 
-export async function convertBackgrounds(show: Show, noLoad = false) {
+export async function convertBackgrounds(show: Show, noLoad = false, init = false) {
     if (!show?.media) return {}
 
     show = clone(show)
-    let mediaIds: string[] = []
+    const mediaIds: string[] = []
     show.layouts[show.settings?.activeLayout]?.slides.forEach((a) => {
         if (a.background) mediaIds.push(a.background)
         Object.values(a.children || {}).forEach((child) => {
@@ -299,6 +272,9 @@ export async function convertBackgrounds(show: Show, noLoad = false) {
                 show.media[id].path = getThumbnailPath(path, mediaSize.slideSize)
                 return
             }
+
+            const remoteConnections = Object.keys(get(connections).REMOTE || {})?.length || 0
+            if (!init && remoteConnections === 0) return
 
             const base64Path: string = await getBase64Path(path, mediaSize.slideSize)
             if (base64Path) show.media[id].path = base64Path

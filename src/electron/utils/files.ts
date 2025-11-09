@@ -146,6 +146,15 @@ export function getFileStats(filePath: string, disableLog = false) {
     }
 }
 
+export function getFileStatsAsync(filePath: string): Promise<null | Stats> {
+    return new Promise((resolve) => {
+        fs.stat(filePath, (err, stats) => {
+            if (err) return resolve(null)
+            resolve(stats)
+        })
+    })
+}
+
 export function makeDir(folderPath: string) {
     try {
         fs.mkdirSync(folderPath, { recursive: true })
@@ -155,13 +164,16 @@ export function makeDir(folderPath: string) {
     }
 }
 
-export function getValidFileName(path: string) {
-    return path.replace(/[/\\?%*:|"<>]/g, "").replace(/\s+/g, " ").trim()
+export function getValidFileName(filePath: string) {
+    return filePath.replace(/[/\\?%*:|"<>]/g, "").replace(/\s+/g, " ").trim()
 }
 
 // SELECT DIALOGS
 
 export function selectFilesDialog(title = "", filters: Electron.FileFilter, multiple = true): string[] {
+    // crashes if empty in electron v37
+    if (!filters.extensions.length) filters.extensions = ["*"]
+
     const options: Electron.OpenDialogSyncOptions = { properties: ["openFile"], filters: [{ name: filters.name, extensions: filters.extensions }] }
     if (title) options.title = title
     if (multiple) options.properties!.push("multiSelections")
@@ -181,10 +193,11 @@ export function selectFolderDialog(title = "", defaultPath = ""): string {
 
 // DATA FOLDERS
 
-export function openSystemFolder(folderPath: string) {
-    if (!doesPathExist(folderPath)) return sendToMain(ToMain.ALERT, "This does not exist!")
+export function openInSystem(filePath: string, openFolder = false) {
+    if (!doesPathExist(filePath)) return sendToMain(ToMain.ALERT, "This does not exist!")
 
-    shell.openPath(folderPath).catch((err) => console.error("Could not open system folder: " + String(err)))
+    if (openFolder) shell.openPath(filePath).catch((err) => console.error("Could not open system folder: " + String(err)))
+    else shell.showItemInFolder(filePath)
 }
 
 const appFolderName = "FreeShow"
@@ -328,7 +341,7 @@ export function getFolderContent(data: { path: string; disableThumbnails?: boole
     const folderFiles: { [key: string]: FileData[] } = {}
     if (data.listFilesInFolders) {
         const folders: FileData[] = files.filter((a) => a.folder)
-        folders.forEach(getFilesInFolder)
+        if (folders.length < 15) folders.forEach(getFilesInFolder)
     }
 
     function getFilesInFolder(folder: FileData) {
@@ -353,8 +366,8 @@ export function getFolderContent(data: { path: string; disableThumbnails?: boole
 export async function getFoldersContent(paths: { path: string }[]) {
     const list: { [key: string]: FileData[] } = {}
 
-    for (let i = 0; i < paths.length; i++) {
-        const folderPath = paths[i].path
+    for (const folderData of paths) {
+        const folderPath = folderData.path
         const fileList = await readFolderAsync(folderPath)
 
         const files: FileData[] = []
@@ -742,7 +755,7 @@ export function bundleMediaFiles({ showsPath, dataPath }: { showsPath: string; d
     })
 
     // open folder
-    openSystemFolder(outputPath)
+    openInSystem(outputPath, true)
     currentlyBundling = false
 }
 
@@ -868,7 +881,7 @@ const FIXES = {
     },
     OPEN_APPDATA_SETTINGS: () => {
         // this will open the "settings.json" file located at the app data location (can also be used to find other setting files here)
-        openSystemFolder(stores.SETTINGS.path)
+        openInSystem(stores.SETTINGS.path, true)
     }
 }
 function specialCaseFixer() {

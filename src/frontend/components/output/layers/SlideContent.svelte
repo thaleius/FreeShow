@@ -1,8 +1,10 @@
 <script lang="ts">
+    import { onDestroy, onMount } from "svelte"
     import type { Item, OutSlide, SlideData } from "../../../../types/Show"
-    import { activeTimers, playingAudio, playingAudioPaths, variables, videosTime } from "../../../stores"
+    import { showsCache } from "../../../stores"
     import { shouldItemBeShown } from "../../edit/scripts/itemHelpers"
     import { clone } from "../../helpers/array"
+    import { loadCustomFonts } from "../../helpers/fonts"
     import Textbox from "../../slide/Textbox.svelte"
     import SlideItemTransition from "../transitions/SlideItemTransition.svelte"
 
@@ -23,8 +25,13 @@
     export let preview = false
     export let transition: any = {}
     export let transitionEnabled = false
-    export let isKeyOutput = false
     export let styleIdOverride = ""
+
+    onMount(() => {
+        // custom fonts
+        const currentShow = $showsCache[outSlide.id]
+        if (currentShow?.settings?.customFonts) loadCustomFonts(currentShow.settings.customFonts)
+    })
 
     // TEST:
     // conditions
@@ -38,13 +45,14 @@
     let show = false
 
     const showItemRef = { outputId, slideIndex: outSlide?.index }
-    $: videoTime = $videosTime[outputId] || 0 // WIP only update if the items text has a video dynamic value
-    $: if ($activeTimers || $variables || $playingAudio || $playingAudioPaths || videoTime) updateValues()
-    let update = 0
-    function updateValues() {
+    // $: videoTime = $videosTime[outputId] || 0 // WIP only update if the items text has a video dynamic value
+    // $: if ($activeTimers || $variables || $playingAudio || $playingAudioPaths || videoTime) updateValues()
+    let updater = 0
+    const updaterInterval = setInterval(() => {
         if (isClearing) return
-        update++
-    }
+        if (currentItems.find((a) => a.conditions)) updater++
+    }, 300)
+    onDestroy(() => clearInterval(updaterInterval))
 
     // do not update if only line has changed
     $: currentOutSlide = "{}"
@@ -141,7 +149,7 @@
 <!-- Updating this with another "store" causes svelte transition bug! -->
 {#key show}
     {#each currentItems as item}
-        {#if show && shouldItemBeShown(item, currentItems, showItemRef, update) && (!item.clickReveal || current.outSlide?.itemClickReveal)}
+        {#if show && shouldItemBeShown(item, currentItems, showItemRef, updater) && (!item.clickReveal || current.outSlide?.itemClickReveal)}
             <SlideItemTransition
                 {preview}
                 {transitionEnabled}
@@ -162,7 +170,6 @@
                 <!-- backdropFilter={current.slideData?.filterEnabled?.includes("foreground") ? current.slideData?.["backdrop-filter"] : ""} -->
                 <Textbox
                     backdropFilter={current.slideData?.["backdrop-filter"] || ""}
-                    key={isKeyOutput}
                     disableListTransition={mirror}
                     chords={customItem.chords?.enabled}
                     animationStyle={animationData.style || {}}

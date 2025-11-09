@@ -5,8 +5,8 @@
     import { requestMain } from "../../../IPC/main"
     import { AudioMicrophone } from "../../../audio/audioMicrophone"
     import { AudioPlayer } from "../../../audio/audioPlayer"
-    import { activePopup, activeShow, alertMessage, dictionary, driveData, media, outLocked, outputs, playingAudio, showsCache, styles } from "../../../stores"
-    import { translate } from "../../../utils/language"
+    import { activePopup, activeShow, alertMessage, driveData, media, outLocked, outputs, playingAudio, showsCache, styles } from "../../../stores"
+    import { translateText } from "../../../utils/language"
     import { getAccess } from "../../../utils/profile"
     import { send } from "../../../utils/request"
     import { actionData } from "../../actions/actionData"
@@ -14,7 +14,7 @@
     import MediaLoader from "../../drawer/media/MediaLoader.svelte"
     import Icon from "../../helpers/Icon.svelte"
     import T from "../../helpers/T.svelte"
-    import { sortByName } from "../../helpers/array"
+    import { clone, sortByName } from "../../helpers/array"
     import { getExtension, getMediaStyle, getMediaType, isMediaExtension, loadThumbnail, mediaSize } from "../../helpers/media"
     import { findMatchingOut, getActiveOutputs, getCurrentStyle, setOutput } from "../../helpers/output"
     import { _show } from "../../helpers/shows"
@@ -192,11 +192,14 @@
                             size={3}
                             on:click={() => {
                                 if (!$outLocked) {
-                                    setOutput("background", { path: background.path, type: background.type, loop: background.loop !== false, muted: background.muted !== false, ...mediaStyle })
+                                    let style = clone(mediaStyle)
+                                    style.fit = $media[background.path || ""]?.fit || ""
+                                    delete style.fitOptions
+
+                                    setOutput("background", { path: background.path, type: background.type, loop: background.loop !== false, muted: background.muted !== false, ...style })
                                     if (background.type === "video") send(OUTPUT, ["DATA"], { [outputId]: { duration: 0, paused: false, muted: background.muted !== false, loop: background.loop !== false } })
                                 }
                             }}
-                            title={$dictionary.media?.play}
                         >
                             <MediaLoader name={background.name} path={background.path || ""} thumbnailPath={bgPath} type={background.type} {mediaStyle} />
                         </HoverButton>
@@ -208,16 +211,10 @@
                         {/if}
 
                         {#if background.type === "video"}
-                            <Button
-                                style="flex: 0;padding: 14px 5px;"
-                                center
-                                title={background.muted !== false ? $dictionary.actions?.unmute : $dictionary.actions?.mute}
-                                on:click={() => setBG(background.id || "", "muted", background.muted === false)}
-                                dark
-                            >
+                            <Button style="flex: 0;padding: 14px 5px;" center title={translateText(background.muted !== false ? "actions.unmute" : "actions.mute")} on:click={() => setBG(background.id || "", "muted", background.muted === false)} dark>
                                 <Icon id={background.muted !== false ? "muted" : "volume"} white={background.muted !== false} size={1.2} />
                             </Button>
-                            <Button style="flex: 0;padding: 14px 5px;" center title={$dictionary.media?._loop} on:click={() => setBG(background.id || "", "loop", background.loop === false)} dark>
+                            <Button style="flex: 0;padding: 14px 5px;" center title={translateText("media._loop")} on:click={() => setBG(background.id || "", "loop", background.loop === false)} dark>
                                 <Icon id="loop" white={background.loop === false} size={1.2} />
                             </Button>
                         {/if}
@@ -244,7 +241,6 @@
                                         if (type === "video") send(OUTPUT, ["DATA"], { [outputId]: { duration: 0, paused: false, muted: true, loop: true } })
                                     }
                                 }}
-                                title={$dictionary.media?.play}
                             >
                                 <MediaLoader name={background.name} path={background.path} {type} {mediaStyle} />
                             </HoverButton>
@@ -306,7 +302,7 @@
                 {@const actionId = getActionTriggerId(action.triggers?.[0])}
                 {@const customData = actionData[actionId] || {}}
                 {@const actionValue = action?.actionValues?.[actionId] || action?.actionValues?.[action.triggers?.[0]] || {}}
-                {@const customName = getActionName(actionId, actionValue) || (action.name !== translate(customData.name) ? action.name : "")}
+                {@const customName = getActionName(actionId, actionValue) || (action.name !== translateText(customData.name) ? action.name : "")}
 
                 <SelectElem id="action" data={action} draggable>
                     <!-- class="context #action" -->

@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { createEventDispatcher, onDestroy } from "svelte"
+    import { createEventDispatcher, onDestroy, onMount } from "svelte"
     import type { MediaStyle } from "../../../types/Main"
     import { media } from "../../stores"
     import { enableSubtitle, encodeFilePath, isVideoSupported } from "../helpers/media"
@@ -16,14 +16,54 @@
 
     let dispatch = createEventDispatcher()
 
+    // values for deciding whether we need the blurred video overlay
+    let container: HTMLDivElement | null = null
+    let containerAspect: number | null = null
+    let videoAspect: number | null = null
+    let perfectFit = false
+
+    onMount(() => {
+        if (!container) return
+
+        const w = container.clientWidth
+        const h = container.clientHeight
+        containerAspect = w && h ? w / h : null
+    })
+
     let hasLoaded = false
     function loaded() {
         hasLoaded = true
         dispatch("loaded", true)
     }
 
+    // Pingback after 30 playing seconds on videos where tracking is required
+    let pingbackTime = 0
+    let pingbackInterval: NodeJS.Timeout | null = null
+    $: if (path && !mirror) setupPingback()
+    function setupPingback() {
+        pingbackTime = 0
+        if (pingbackInterval) clearInterval(pingbackInterval)
+
+        pingbackInterval = setInterval(() => {
+            if (videoData.paused) return
+
+            pingbackTime++
+            if (pingbackTime < 30) return
+
+            if (pingbackInterval) clearInterval(pingbackInterval)
+            sendPingback()
+        }, 1000)
+    }
+    function sendPingback() {
+        const pingbackUrl = $media[path]?.pingbackUrl
+        if (!pingbackUrl) return
+
+        fetch(pingbackUrl, { method: "GET", mode: "no-cors" }).catch(console.error)
+    }
+
     onDestroy(() => {
         if (endInterval) clearInterval(endInterval)
+        if (pingbackInterval) clearInterval(pingbackInterval)
     })
 
     // custom end time
@@ -41,6 +81,9 @@
     function playing() {
         if (!hasLoaded || mirror) return
         hasLoaded = false
+
+        // has custom start time
+        if ((Math.max(startAt, mediaStyle.fromTime || 0) || 0) === 0) return
 
         // go to custom start time
         videoData.paused = true
@@ -70,16 +113,24 @@
     }
 
     $: mediaStyleString = `width: 100%;height: 100%;object-fit: ${mediaStyle.fit === "blur" ? "contain" : mediaStyle.fit || "contain"};filter: ${mediaStyle.filter || ""};transform: scale(${mediaStyle.flipped ? "-1" : "1"}, ${mediaStyle.flippedY ? "-1" : "1"});`
-    $: mediaStyleBlurString = `position: absolute;filter: ${mediaStyle.filter || ""} blur(6px) opacity(0.3);object-fit: cover;width: 100%;height: 100%;transform: scale(${mediaStyle.flipped ? "-1" : "1"}, ${mediaStyle.flippedY ? "-1" : "1"});`
+    $: mediaStyleBlurString = `position: absolute;filter: ${mediaStyle.filter || ""} blur(${mediaStyle.fitOptions?.blurAmount ?? 6}px) opacity(${mediaStyle.fitOptions?.blurOpacity || 0.3});object-fit: cover;width: 100%;height: 100%;transform: scale(${mediaStyle.flipped ? "-1" : "1"}, ${mediaStyle.flippedY ? "-1" : "1"});`
 
     let blurVideo: HTMLVideoElement | null = null
     $: if (blurVideo && (videoTime < blurVideo.currentTime - 0.1 || videoTime > blurVideo.currentTime + 0.1)) blurVideo.currentTime = videoTime
     $: if (!videoData.paused && blurVideo?.paused) blurVideo.play()
     $: blurPausedState = videoData.paused
+
+    // update computed aspects and determine whether the blurred video is necessary
+    $: videoAspect = video && video.videoWidth && video.videoHeight ? video.videoWidth / video.videoHeight : null
+    // 1% tolerance
+    $: perfectFit = containerAspect && videoAspect ? Math.abs(containerAspect - videoAspect) <= 0.01 : false
+
+    // some videos don't like high playback speed (above 5.9)
+    // https://issues.chromium.org/issues/40167938
 </script>
 
-<div style="display: flex;width: 100%;height: 100%;place-content: center;{animationStyle}">
-    {#if mediaStyle.fit === "blur"}
+<div bind:this={container} style="display: flex;width: 100%;height: 100%;place-content: center;{animationStyle}">
+    {#if mediaStyle.fit === "blur" && !perfectFit}
         <video class="media" style={mediaStyleBlurString} src={encodeFilePath(path)} bind:playbackRate bind:this={blurVideo} bind:paused={blurPausedState} muted loop={videoData.loop || false} />
     {/if}
     <video

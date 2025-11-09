@@ -7,6 +7,7 @@
     import { getActiveOutputs, getOutputResolution, percentageStylePos } from "../helpers/output"
     import { replaceDynamicValues } from "../helpers/showActions"
     import { getStyles } from "../helpers/style"
+    import { createVirtualBreaks } from "../../show/slides"
 
     export let item: Item
     export let slideIndex = 0
@@ -38,7 +39,7 @@
     export let centerPreview = false
     export let revealed = -1
 
-    $: lines = clone(item?.lines || [])
+    $: lines = createVirtualBreaks(clone(item?.lines || []), outputStyle?.skipVirtualBreaks)
     $: if (linesStart !== null && linesEnd !== null && lines.length) {
         lines = lines.filter((a) => a.text.filter((a) => a.value !== undefined)?.length)
 
@@ -140,7 +141,7 @@
     // CHORDS
 
     let chordLines: string[] = []
-    $: if (chords && (item?.lines || fontSize)) createChordLines()
+    $: if (chords && (item?.lines || fontSize)) setTimeout(createChordLines)
     function createChordLines() {
         chordLines = []
         if (!Array.isArray(item?.lines)) return
@@ -227,7 +228,7 @@
         {#each lines as line, i}
             {#if (linesStart === null || linesEnd === null || (i >= linesStart && i < linesEnd)) && (!maxLines || (maxLinesInvert ? i > lines.length - maxLines - 1 : i < maxLines))}
                 {#if chords && chordLines[i]}
-                    <div class:first={i === 0} class="break chords" class:stageChords={!!stageItem} style="--offsetY: {(stageItem?.chords ? stageItem.chords.offsetY : item?.chords?.offsetY) || 0}px;">
+                    <div class:first={i === 0} class="break chords" class:stageChords={!!stageItem} style="--offsetY: {(stageItem?.chords ? stageItem.chords.offsetY : item?.chords?.offsetY) || 0}px;{style ? line.align : ''}">
                         {@html chordLines[i]}
                     </div>
                 {/if}

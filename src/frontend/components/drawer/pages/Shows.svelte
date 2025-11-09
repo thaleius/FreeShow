@@ -2,11 +2,11 @@
     // import VirtualList from "@sveltejs/svelte-virtual-list"
     // import VirtualList from "./VirtualList2.svelte"
     import type { ShowList } from "../../../../types/Show"
-    import { activeEdit, activeFocus, activePopup, activeProject, activeShow, activeTagFilter, categories, dictionary, drawer, focusMode, labelsDisabled, sorted, sortedShowsList } from "../../../stores"
+    import { activeEdit, activeFocus, activePopup, activeProject, activeShow, activeTagFilter, categories, drawer, focusMode, labelsDisabled, sorted, sortedShowsList } from "../../../stores"
     import { getAccess } from "../../../utils/profile"
     import { formatSearch, isRefinement, showSearch, tokenize } from "../../../utils/search"
     import T from "../../helpers/T.svelte"
-    import { clone } from "../../helpers/array"
+    import { clone, sortByNameAndNumber } from "../../helpers/array"
     import { history } from "../../helpers/history"
     import { dateToString } from "../../helpers/time"
     import FloatingInputs from "../../input/FloatingInputs.svelte"
@@ -17,7 +17,6 @@
     import SelectElem from "../../system/SelectElem.svelte"
     import VirtualList from "../VirtualList.svelte"
 
-    export let id: string
     export let active: string | null
     export let searchValue: string
 
@@ -39,11 +38,16 @@
     $: filteredStored = filteredShows =
         active === "all"
             ? showsSorted.filter((a) => !$categories[a?.category || ""]?.isArchive && profile[a?.category || ""] !== "none")
-            : showsSorted.filter((s) => profile[s?.category || ""] !== "none" && (active === s.category || (active === "unlabeled" && (s.category === null || !$categories[s.category]))))
+            : active === "number"
+              ? sortByNameAndNumber(showsSorted.filter((a) => a.quickAccess?.number))
+              : active === "locked"
+                ? showsSorted.filter((a) => a.locked)
+                : showsSorted.filter((s) => profile[s?.category || ""] !== "none" && (active === s.category || (active === "unlabeled" && (s.category === null || !$categories[s.category]))))
 
     export let firstMatch: null | any = null
     let previousSearchTokens: string[] = []
-    $: if (active) previousSearchTokens = []
+    $: if (active || filteredStored) previousSearchTokens = []
+    // $: if (active || filteredStored) previousFilteredShows = clone(filteredStored)
     let previousFilteredShows: any[] = clone(filteredStored)
 
     $: drawerIsClosed = $drawer.height <= 40
@@ -63,6 +67,7 @@
         }, 100)
     }
 
+    // let scrolledToTop = ""
     let createFromSearch = false
     $: if (formattedSearch !== undefined || filteredStored || $activeTagFilter) search()
     function search() {
@@ -101,7 +106,9 @@
             }
 
             // scroll to top
-            document.querySelector("svelte-virtual-list-viewport")?.scrollTo(0, 0)
+            setTimeout(() => document.querySelector("svelte-virtual-list-viewport")?.scrollTo(0, 0))
+            // if (scrolledToTop !== searchValue)
+            // scrolledToTop = searchValue
         } else {
             filteredShows = filterByTags(clone(filteredStored), $activeTagFilter)
             firstMatch = null
@@ -124,18 +131,6 @@
             return !tags.find((tagId) => !a.quickAccess?.tags?.includes(tagId))
         })
     }
-
-    // auto scroll to active show in the virtual list
-    // WIP this does not work because the show buttons does not exist unless they are in view
-    if (id) {
-    }
-    // $: if (id === "shows" && $activeShow !== null && ($activeShow.type || "show") === "show") {
-    //     let scrollElem = document.querySelector("svelte-virtual-list-viewport")
-    //     if (scrollElem) {
-    //         let elemTop = scrollElem.querySelector("#show_" + $activeShow.id)?.closest("svelte-virtual-list-row")?.offsetTop || 0
-    //         scrollElem.scrollTo(0, elemTop - scrollElem.offsetTop)
-    //     }
-    // }
 
     let showLoading = false
     function keydown(e: KeyboardEvent) {
@@ -184,12 +179,13 @@
 
     $: sortType = $sorted.shows?.type || "name"
 
-    function createShow(e: any, border: boolean = false) {
+    function createShow(e: any, border = false) {
         if (border && e.target?.closest("button")) return
 
         const { ctrl } = e.detail
         if (ctrl) {
-            history({ id: "UPDATE", newData: { remember: { project: $activeProject } }, location: { page: "show", id: "show" } })
+            const selectedIndex = $activeShow?.index === undefined ? undefined : $activeShow.index + 1
+            history({ id: "UPDATE", newData: { remember: { project: $activeProject, index: selectedIndex } }, location: { page: "show", id: "show" } })
         } else {
             activePopup.set("show")
         }
@@ -216,10 +212,10 @@
             {/if}
             <!-- reload list when changing category -->
             {#key active}
-                <VirtualList items={filteredShows} let:item={show}>
+                <VirtualList items={filteredShows} let:item={show} activeIndex={searchValue.length ? -1 : filteredShows.findIndex((a) => a.id === $activeShow?.id)}>
                     <SelectElem id="show_drawer" data={{ id: show.id }} shiftRange={filteredShows} draggable>
                         {#if searchValue.length <= 1 || show.match}
-                            <ShowButton id={show.id} {show} data={dateToString(show.timestamps?.[sortType] || show.timestamps?.modified || show.timestamps?.created || "", true, $dictionary)} class="#drawer_show_button" match={show.match || null} />
+                            <ShowButton {active} id={show.id} {show} data={dateToString(show.timestamps?.[sortType] || show.timestamps?.modified || show.timestamps?.created || "", true)} class="#drawer_show_button" match={show.match || null} />
                         {/if}
                     </SelectElem>
                 </VirtualList>

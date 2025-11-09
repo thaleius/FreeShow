@@ -4,7 +4,7 @@ import type { Show } from "../../types/Show"
 import type { Category } from "../../types/Tabs"
 import { history } from "../components/helpers/history"
 import { checkName } from "../components/helpers/show"
-import { activeDrawerTab, activePopup, activeProject, activeRename, alertMessage, categories, drawerTabsData, shows } from "../stores"
+import { activeDrawerTab, activePopup, activeProject, activeRename, activeShow, alertMessage, categories, drawerTabsData, shows } from "../stores"
 import { newToast } from "../utils/common"
 import { convertText } from "./txt"
 
@@ -34,13 +34,14 @@ export function createCategory(name: string, icon = "song", { isDefault, isArchi
 
 export function setTempShows(tempShows: { id: string; show: Show }[]) {
     if (tempShows.length === 1) {
-        history({ id: "UPDATE", newData: { data: tempShows[0].show, remember: { project: get(activeProject) } }, oldData: { id: tempShows[0].id }, location: { page: "show", id: "show" } })
+        const selectedIndex = get(activeShow)?.index === undefined ? undefined : get(activeShow)!.index! + 1
+        history({ id: "UPDATE", newData: { data: tempShows[0].show, remember: { project: get(activeProject), index: selectedIndex } }, oldData: { id: tempShows[0].id }, location: { page: "show", id: "show" } })
     } else {
         history({ id: "SHOWS", newData: { data: tempShows, replace: true }, location: { page: "show" } })
     }
 
     activePopup.set(null)
-    newToast("$main.finished")
+    newToast("main.finished")
 }
 
 export function importShow(files: { content: string; name?: string; extension?: string }[]) {
@@ -51,13 +52,25 @@ export function importShow(files: { content: string; name?: string; extension?: 
         let show
 
         try {
-            ;[id, show] = JSON.parse(content)
+            const showData = JSON.parse(content)
+            if (Array.isArray(showData)) {
+                [id, show] = showData
+            } else {
+                id = uid()
+                show = showData
+            }
         } catch (e: any) {
             // try to fix broken show files
             content = content.slice(0, content.indexOf("}}]") + 3)
 
             try {
-                ;[id, show] = JSON.parse(content)
+                const showData = JSON.parse(content)
+                if (Array.isArray(showData)) {
+                    [id, show] = showData
+                } else {
+                    id = uid()
+                    show = showData
+                }
             } catch (err: any) {
                 console.error(name, err)
                 const pos = Number(err.toString().replace(/\D+/g, "") || 100)
@@ -68,6 +81,11 @@ export function importShow(files: { content: string; name?: string; extension?: 
 
         if (!show) return
         show = fixShowIssues(show)
+
+        // set to selected category if set category does not exist
+        let categoryId = show.category && get(categories)[show.category] ? show.category : get(drawerTabsData).shows?.activeSubTab
+        if (categoryId === "all" || categoryId === "unlabeled") categoryId = null
+        show.category = categoryId
 
         tempShows.push({ id, show: { ...show, name: checkName(show.name, id) } })
     })
@@ -123,7 +141,7 @@ export function importSpecific(data: { content: string; name?: string; extension
         })
     })
 
-    newToast("$main.finished")
+    newToast("main.finished")
 }
 
 export function fixShowIssues(show) {

@@ -1,14 +1,15 @@
 <script lang="ts">
-    import { onDestroy, onMount } from "svelte"
+    import { onDestroy } from "svelte"
     import type { Item } from "../../../../types/Show"
     import { activeDrawerTab, activeTimers, drawer, timers } from "../../../stores"
     import { getCurrentTimerValue } from "../../drawer/timers/timers"
     import { setDrawerTabData } from "../../helpers/historyHelpers"
     import { getStyles } from "../../helpers/style"
     // import { blur } from "svelte/transition"
+    import type { StageItem } from "../../../../types/Stage"
     import { joinTimeBig } from "../../helpers/time"
 
-    export let item: null | Item = null
+    export let item: null | Item | StageItem = null
     // export let timer: any = item?.timer
     // export let ref: { type?: "show" | "stage" | "overlay" | "template"; showId?: string; slideId?: string; id: string }
     export let id: string
@@ -26,37 +27,37 @@
     $: timeValue = joinTimeBig(typeof currentTime === "number" ? currentTime : 0, item?.timer?.showHours !== false)
 
     let ms = 0
-    let msInterval: NodeJS.Timeout | null = null
-    $: if (showMs && timeValue && mounted) runMs()
-    function runMs() {
-        const timer = $activeTimers.find((a) => a.id === id)
-        if (!timer || timer.paused) {
-            ms = 0
-            return
-        }
+    // let msInterval: NodeJS.Timeout | null = null
+    // $: if (showMs && timeValue && mounted) runMs()
+    // function runMs() {
+    //     const timer = $activeTimers.find((a) => a.id === id)
+    //     if (!timer || timer.paused) {
+    //         ms = 0
+    //         return
+    //     }
 
-        ms = 0
-        if (msInterval) return
+    //     ms = 0
+    //     if (msInterval) return
 
-        msInterval = setInterval(() => {
-            // ms = Math.min(ms + 1, 99)
-            ms++
-            if (ms > 99 && msInterval) {
-                ms = 0
-                clearInterval(msInterval)
-                msInterval = null
-            }
-        }, 10)
-    }
+    //     msInterval = setInterval(() => {
+    //         // ms = Math.min(ms + 1, 99)
+    //         ms++
+    //         if (ms > 99 && msInterval) {
+    //             ms = 0
+    //             clearInterval(msInterval)
+    //             msInterval = null
+    //         }
+    //     }, 10)
+    // }
 
-    let mounted = false
-    onMount(() => setTimeout(() => (mounted = true), 800))
+    // let mounted = false
+    // onMount(() => setTimeout(() => (mounted = true), 800))
 
-    onDestroy(() => {
-        if (msInterval) clearInterval(msInterval)
-    })
+    // onDestroy(() => {
+    //     if (msInterval) clearInterval(msInterval)
+    // })
 
-    $: if (Object.keys(timer).length) currentTime = getCurrentTimerValue(timer, ref, today, $activeTimers)
+    $: if (timer?.type) currentTime = getCurrentTimerValue(timer, ref, today, $activeTimers)
     else currentTime = 0
 
     $: min = Math.min(timer.start || 0, timer.end || 0)
@@ -126,7 +127,7 @@
 {:else if item?.timer?.viewType === "circle"}
     <div class="circle" class:mask={item?.timer?.circleMask} style="--percentage: {percentage};--color: {itemColor};" on:dblclick={openInDrawer} />
 {:else}
-    <div class="align autoFontSize" style="{style}{(item?.align || '').replaceAll('text-align', 'justify-content')}" on:dblclick={openInDrawer}>
+    <div class="align autoFontSize" style="{style}{item?.alignX ? '' : (item?.align || 'justify-content: center;').replaceAll('text-align', 'justify-content')}" on:dblclick={openInDrawer}>
         <div style="display: flex;white-space: nowrap;{overflow ? 'color: ' + (timer.overflowColor || 'red') + ';' : ''}">
             {#if !blinkingOverflow || !blinkingOff}
                 {#if overflow && negative}
@@ -143,6 +144,8 @@
     .align {
         display: flex;
         justify-content: center;
+        /* stage align */
+        justify-content: var(--text-align);
         height: 100%;
         align-items: center;
     }

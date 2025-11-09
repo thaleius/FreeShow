@@ -2,9 +2,9 @@
     import { uid } from "uid"
     import { ShowObj } from "../../../../classes/Show"
     import { convertText, getQuickExample, trimNameFromString } from "../../../../converters/txt"
-    import { activePopup, activeProject, activeShow, categories, dictionary, drawerTabsData, formatNewShow, quickTextCache, shows, special, splitLines } from "../../../../stores"
+    import { activePopup, activeProject, activeShow, categories, drawerTabsData, formatNewShow, quickTextCache, shows, special, splitLines } from "../../../../stores"
     import { newToast } from "../../../../utils/common"
-    import { translate, translateText } from "../../../../utils/language"
+    import { translateText } from "../../../../utils/language"
     import { clone, sortObject } from "../../../helpers/array"
     import { history } from "../../../helpers/history"
     import { checkName } from "../../../helpers/show"
@@ -45,7 +45,7 @@
             "name"
         ).map((cat) => ({
             id: cat.id,
-            name: cat.default ? `$:${cat.name}:$` : cat.name
+            name: cat.name
         }))
     ]
 
@@ -62,10 +62,10 @@
     // OPTIONS
 
     const createOptions = [
-        { id: "text", name: translate("create_show.quick_lyrics"), title: `${$dictionary.create_show?.quick_lyrics_tip} [Enter]`, icon: "text" },
+        { id: "text", name: translateText("create_show.quick_lyrics"), title: translateText("create_show.quick_lyrics_tip [Enter]"), icon: "text" },
         // { id: "clipboard", name: "clipboard", icon: "clipboard" },
-        { id: "web", name: translate("create_show.web"), title: `${$dictionary.create_show?.search_web} [Ctrl+F]`, icon: "search" },
-        { id: "empty", name: translate("create_show.empty"), title: `${$dictionary.new?.empty_show} [Ctrl+Enter]`, icon: "add" }
+        { id: "web", name: translateText("create_show.web"), title: translateText("create_show.search_web [Ctrl+F]"), icon: "search" },
+        { id: "empty", name: translateText("create_show.empty"), title: translateText("new.empty_show [Ctrl+Enter]"), icon: "add" }
     ]
     $: resolvedCreateOptions = clone(createOptions).map((a: any) => {
         if (a.id === "text") a.colored = values.text.length
@@ -85,7 +85,7 @@
             // look for existing shows with the same title
             if (values.name) {
                 const exists = Object.values($shows).find((a) => a?.name?.toLowerCase() === values.name.toLowerCase())
-                if (exists) newToast("$create_show.exists")
+                if (exists) newToast("create_show.exists")
             }
         }
     }
@@ -134,7 +134,8 @@
         } else {
             let show = new ShowObj(false, category)
             show.name = checkName(values.name)
-            history({ id: "UPDATE", newData: { data: show, remember: { project: $activeProject } }, location: { page: "show", id: "show" } })
+            const selectedIndex = $activeShow?.index === undefined ? undefined : $activeShow.index + 1
+            history({ id: "UPDATE", newData: { data: show, remember: { project: $activeProject, index: selectedIndex } }, location: { page: "show", id: "show" } })
         }
 
         values = { name: "", text: "", origin: "" }
@@ -173,7 +174,7 @@
         if (values.name) return values.name
         // WIP get from "title" metadata
         if (values.text.trim().length) return trimNameFromString(values.text)
-        return $dictionary.main?.unnamed
+        return ""
     }
 
     function addNewCategory(e: any) {
@@ -191,7 +192,7 @@
 
 {#if !selectedOption}
     <List bottom={20}>
-        <MaterialTextInput id="name" label="show.name" autofocus value={values.name} on:input={(e) => changeValue(e, "name")} />
+        <MaterialTextInput id="name" label="show.name" autofocus value={values.name} autofill={values.name ? "" : getName(values)} on:input={(e) => changeValue(e, "name")} />
         <MaterialDropdown
             label="show.category"
             value={selectedCategory?.id}
@@ -219,7 +220,7 @@
         <List top={5}>
             <MaterialToggleSwitch label="create_show.auto_groups" checked={$special.autoGroups !== false} defaultValue={true} on:change={(e) => special.set({ ...$special, autoGroups: e.detail })} />
             <MaterialToggleSwitch label="create_show.format_new_show" checked={$formatNewShow} defaultValue={false} on:change={(e) => formatNewShow.set(e.detail)} />
-            <MaterialNumberInput label="create_show.split_lines" value={$splitLines} max={100} on:change={(e) => splitLines.set(e.detail)} />
+            <MaterialNumberInput label="create_show.split_lines" value={$splitLines} max={100} on:change={(e) => splitLines.set(e.detail)} hideWhenZero />
         </List>
     {/if}
 
@@ -228,7 +229,7 @@
         variant="contained"
         title="timer.create [Ctrl+Enter]"
         disabled={values.text.trim().length === 0}
-        info={getName(values)}
+        info={getName(values) || translateText("main.unnamed")}
         style="width: 100%;margin-top: 20px;"
         icon="add"
         data-testid="create.show.popup.new.show"

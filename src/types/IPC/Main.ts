@@ -1,9 +1,10 @@
 import type { Display } from "electron"
 import type { ExifData } from "exif"
 import type { Stats } from "fs"
+import type { Bible } from "json-bible/lib/Bible"
 import type os from "os"
+import type { ContentFile, ContentLibraryCategory, ContentProviderId } from "../../electron/contentProviders/base/types"
 import type { stores } from "../../electron/data/store"
-import type { Bible } from "../Bible"
 import type { ErrorLog, FileData, LessonsData, LyricSearchResult, MainFilePaths, Media, OS, Subtitle } from "../Main"
 import type { Output } from "../Output"
 import type { Folders, Projects } from "../Projects"
@@ -78,6 +79,7 @@ export enum Main {
     GET_WINDOWS = "GET_WINDOWS",
     GET_DISPLAYS = "GET_DISPLAYS",
     OUTPUT = "OUTPUT",
+    DOES_MEDIA_EXIST = "DOES_MEDIA_EXIST",
     GET_THUMBNAIL = "GET_THUMBNAIL",
     SAVE_IMAGE = "SAVE_IMAGE",
     PDF_TO_IMAGE = "PDF_TO_IMAGE",
@@ -94,6 +96,7 @@ export enum Main {
     ACCESS_CAMERA_PERMISSION = "ACCESS_CAMERA_PERMISSION",
     ACCESS_MICROPHONE_PERMISSION = "ACCESS_MICROPHONE_PERMISSION",
     ACCESS_SCREEN_PERMISSION = "ACCESS_SCREEN_PERMISSION",
+    LIBREOFFICE_CONVERT = "LIBREOFFICE_CONVERT",
     SLIDESHOW_GET_APPS = "SLIDESHOW_GET_APPS",
     START_SLIDESHOW = "START_SLIDESHOW",
     PRESENTATION_CONTROL = "PRESENTATION_CONTROL",
@@ -124,12 +127,14 @@ export enum Main {
     READ_FILE = "READ_FILE",
     OPEN_FOLDER = "OPEN_FOLDER",
     OPEN_FILE = "OPEN_FILE",
-    PCO_LOAD_SERVICES = "PCO_LOAD_SERVICES",
-    PCO_STARTUP_LOAD = "PCO_STARTUP_LOAD",
-    PCO_DISCONNECT = "PCO_DISCONNECT",
-    CHUMS_LOAD_SERVICES = "CHUMS_LOAD_SERVICES",
-    CHUMS_STARTUP_LOAD = "CHUMS_STARTUP_LOAD",
-    CHUMS_DISCONNECT = "CHUMS_DISCONNECT"
+    // Provider-based routing
+    PROVIDER_LOAD_SERVICES = "PROVIDER_LOAD_SERVICES",
+    PROVIDER_DISCONNECT = "PROVIDER_DISCONNECT",
+    PROVIDER_STARTUP_LOAD = "PROVIDER_STARTUP_LOAD",
+    // Content Library
+    GET_CONTENT_PROVIDERS = "GET_CONTENT_PROVIDERS",
+    GET_CONTENT_LIBRARY = "GET_CONTENT_LIBRARY",
+    GET_PROVIDER_CONTENT = "GET_PROVIDER_CONTENT"
 }
 
 export interface MainSendPayloads {
@@ -137,7 +142,7 @@ export interface MainSendPayloads {
     [Main.LOG]: any
     /////
     [Main.IMPORT]: { channel: string; format: { name: string; extensions: string[] }; settings?: any }
-    [Main.BIBLE]: { id: string; path: string; name: string; data: any }
+    [Main.BIBLE]: { id: string; path: string; name: string }
     [Main.SHOW]: { id: string; path: string | null; name: string }
     [Main.SAVE]: SaveData
     [Main.SHOWS]: { showsPath: string }
@@ -155,6 +160,7 @@ export interface MainSendPayloads {
     [Main.GET_EMPTY_SHOWS]: { path: string; cached: Shows }
     [Main.FULL_SHOWS_LIST]: { path: string }
     [Main.OUTPUT]: "true" | "false"
+    [Main.DOES_MEDIA_EXIST]: { path: string; creationTime?: number; noCache?: boolean }
     [Main.GET_THUMBNAIL]: { input: string; size: number }
     [Main.SAVE_IMAGE]: { path: string; base64?: string; filePath?: string[]; format?: "png" | "jpg" }
     [Main.PDF_TO_IMAGE]: { dataPath: string; filePath: string }
@@ -168,6 +174,7 @@ export interface MainSendPayloads {
     [Main.NOW_PLAYING_UNSET]: { dataPath: string }
     // [Main.MEDIA_BASE64]: { id: string; path: string }[]
     [Main.CAPTURE_SLIDE]: { output: { [key: string]: Output }; resolution: Resolution }
+    [Main.LIBREOFFICE_CONVERT]: { type: string; dataPath: string }
     [Main.START_SLIDESHOW]: { path: string; program: string }
     [Main.PRESENTATION_CONTROL]: { action: string }
     [Main.START]: { ports: { [key: string]: number }; max: number; disabled: { [key: string]: boolean }; data: { [key: string]: ServerData } }
@@ -196,9 +203,13 @@ export interface MainSendPayloads {
     [Main.READ_FILE]: { path: string }
     [Main.OPEN_FOLDER]: { channel: string; title?: string; path?: string }
     [Main.OPEN_FILE]: { id: string; channel: string; title?: string; filter: any; multiple: boolean; read?: boolean }
-    [Main.PCO_LOAD_SERVICES]: { dataPath: string }
-    [Main.PCO_STARTUP_LOAD]: { dataPath: string }
-    [Main.CHUMS_STARTUP_LOAD]: { shows: TrimmedShows; categories: string[]; showsPath: string }
+    // Provider-based routing
+    [Main.PROVIDER_LOAD_SERVICES]: { providerId: ContentProviderId; dataPath?: string }
+    [Main.PROVIDER_DISCONNECT]: { providerId: ContentProviderId; scope?: string }
+    [Main.PROVIDER_STARTUP_LOAD]: { providerId: ContentProviderId; scope?: string; data?: any }
+    // Content Library
+    [Main.GET_CONTENT_LIBRARY]: { providerId: ContentProviderId }
+    [Main.GET_PROVIDER_CONTENT]: { providerId: ContentProviderId; key: string }
 }
 
 export interface MainReturnPayloads {
@@ -230,7 +241,7 @@ export interface MainReturnPayloads {
     [Main.CLOSE]: boolean | void
     [Main.MAXIMIZED]: boolean
     /////////////////////
-    [Main.BIBLE]: { id: string; error?: string; content?: [string, Bible]; data?: { index?: number } }
+    [Main.BIBLE]: { id: string; error?: string; content?: [string, Bible] }
     [Main.SHOW]: { id: string; error?: string; content?: [string, Show] }
     ///
     [Main.GET_DISPLAYS]: Display[]
@@ -244,12 +255,13 @@ export interface MainReturnPayloads {
     [Main.FULL_SHOWS_LIST]: string[]
     [Main.GET_SCREENS]: Promise<{ name: string; id: string }[]>
     [Main.GET_WINDOWS]: Promise<{ name: string; id: string }[]>
+    [Main.DOES_MEDIA_EXIST]: Promise<{ path: string; exists: boolean; creationTime?: number }>
     [Main.GET_THUMBNAIL]: { output: string; input: string; size: number }
     // [Main.PDF_TO_IMAGE]: Promise<string[]>
     [Main.READ_EXIF]: Promise<{ id: string; exif: ExifData }>
     [Main.MEDIA_CODEC]: Promise<{ path: string; codecs: string[]; mimeType: string; mimeCodec: string }>
     [Main.MEDIA_TRACKS]: Promise<{ path: string; tracks: Subtitle[] }>
-    [Main.MEDIA_IS_DOWNLOADED]: Promise<string | null>
+    [Main.MEDIA_IS_DOWNLOADED]: Promise<{ path: string; buffer: Buffer | null } | null>
     // [Main.MEDIA_BASE64]: { id: string; content: string }[]
     [Main.CAPTURE_SLIDE]: Promise<{ base64: string } | undefined>
     [Main.SLIDESHOW_GET_APPS]: string[]
@@ -264,8 +276,12 @@ export interface MainReturnPayloads {
     [Main.READ_FOLDER]: { path: string; files: FileData[]; filesInFolders: any[]; folderFiles: { [key: string]: any[] } }
     [Main.READ_FOLDERS]: Promise<{ [key: string]: FileData[] }>
     [Main.READ_FILE]: { content: string }
-    [Main.PCO_DISCONNECT]: { success: boolean }
-    [Main.CHUMS_DISCONNECT]: { success: boolean }
+    // Provider-based routing
+    [Main.PROVIDER_DISCONNECT]: { success: boolean }
+    // Content Library
+    [Main.GET_CONTENT_PROVIDERS]: { providerId: ContentProviderId; displayName: string; hasContentLibrary: boolean }[]
+    [Main.GET_CONTENT_LIBRARY]: Promise<ContentLibraryCategory[]>
+    [Main.GET_PROVIDER_CONTENT]: Promise<ContentFile[]>
 }
 
 ///////////

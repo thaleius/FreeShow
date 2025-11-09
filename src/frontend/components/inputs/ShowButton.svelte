@@ -12,9 +12,11 @@
     import { checkName, getLayoutRef } from "../helpers/show"
     import { swichProjectItem, updateOut } from "../helpers/showActions"
     import { joinTime, secondsToTime } from "../helpers/time"
-    import { clearBackground } from "../output/clear"
+    import { clearBackground, clearSlide } from "../output/clear"
     import HiddenInput from "./HiddenInput.svelte"
     import MaterialButton from "./MaterialButton.svelte"
+
+    export let active: string | null = null
 
     export let id: string
     export let show: any // ShowList | ShowRef
@@ -24,9 +26,6 @@
     $: name = type === "show" ? $shows[show.id]?.name : type === "overlay" ? $overlays[show.id]?.name : type === "player" ? ($playerVideos[id] ? $playerVideos[id].name : setNotFound(id)) : show.name
     // export let page: "side" | "drawer" = "drawer"
     export let match: null | number = null
-
-    export let isFirst: boolean = false
-    export let isLast: boolean = false
 
     let profile = getAccess("shows")
     let readOnly = profile.global === "read" || profile[show.category] === "read"
@@ -71,24 +70,24 @@
     }
 
     $: selectedItem = $focusMode ? $activeFocus : $activeShow
-    $: active = index !== null ? selectedItem?.index === index : selectedItem?.id === id
+    $: isActive = index !== null ? selectedItem?.index === index : selectedItem?.id === id
 
     let editActive = false
     function click(e: ClickEvent) {
         const { ctrl, shift, target } = e.detail
-        if (editActive || ctrl || shift || active || target.closest("input")) return
+        if (editActive || ctrl || shift || isActive || target.closest("input")) return
 
         // set active show
         let pos = index
         if (index === null && $activeProject !== null) {
-            let i = $projects[$activeProject].shows.findIndex((p) => p.id === id)
+            let i = $projects[$activeProject]?.shows?.findIndex((p) => p.id === id) ?? -1
             if (i > -1) pos = i
         }
 
         let newShow: any = { id, type }
 
         if ($focusMode) {
-            let inProject = $projects[$activeProject || ""]?.shows.find((p) => p.id === id)
+            let inProject = $projects[$activeProject || ""]?.shows?.find((p) => p.id === id)
             if (inProject) {
                 activeFocus.set({ id, index: pos ?? undefined })
                 return
@@ -126,7 +125,7 @@
 
         if (type === "show" && $showsCache[id] && $showsCache[id].layouts[$showsCache[id].settings.activeLayout]?.slides?.length) {
             let layoutRef = getLayoutRef()
-            let firstEnabledIndex: number = layoutRef.findIndex((a) => !a.data.disabled) || 0
+            let firstEnabledIndex = layoutRef.findIndex((a) => !a.data.disabled)
             updateOut("active", firstEnabledIndex, layoutRef, !e.detail.alt)
 
             let slide = currentOutput.out?.slide || null
@@ -135,11 +134,17 @@
             setOutput("slide", { id, layout: $showsCache[id].settings.activeLayout, index: firstEnabledIndex })
         } else if (type === "image" || type === "video") {
             let outputStyle = $styles[currentOutput.style || ""]
-            let mediaStyle: MediaStyle = getMediaStyle($media[id], outputStyle)
-            let out = { path: id, muted: show.muted || false, loop: show.loop || false, startAt: 0, type: type, ...mediaStyle }
+            const mediaData = $media[id] || {}
+            let mediaStyle: MediaStyle = getMediaStyle(mediaData, outputStyle)
 
-            // remove active slide
-            if ($activeProject && $projects[$activeProject].shows.find((a) => a.id === out.path)) setOutput("slide", null)
+            const videoType = mediaData.videoType
+            const shouldLoop = videoType === "background" ? show.loop || true : false
+            const shouldBeMuted = videoType === "background" ? show.muted || true : false
+
+            let out = { path: id, muted: shouldBeMuted, loop: shouldLoop, startAt: 0, type: type, ...mediaStyle }
+
+            // clear slide
+            if (videoType === "foreground" || (videoType !== "background" && (type === "image" || !shouldLoop))) clearSlide()
 
             setOutput("background", out)
         } else if (type === "pdf") {
@@ -167,33 +172,44 @@
     }
 
     let activeOutput: string | null = null
-    $: if ($outputs) activeOutput = findMatchingOut(id)
+    $: if ($outputs) {
+        activeOutput = findMatchingOut(id)
+
+        // only highlight if the set layout is outputted
+        if (activeOutput && show.layoutInfo?.name) {
+            const outputId = getActiveOutputs($outputs, true, true, true)[0]
+            const selectedLayoutId = Object.entries($showsCache[id]?.layouts).find(([_id, a]) => a.name === show.layoutInfo.name)?.[0]
+            if ($outputs[outputId]?.out?.slide?.layout !== selectedLayoutId) activeOutput = null
+        }
+    }
 
     $: outline = activeOutput !== null || !!$playingAudio[id]
-
-    $: borderRadiusStyle = `${isFirst ? "border-top-right-radius: 10px;" : ""}${isLast ? "border-bottom-right-radius: 10px;" : ""}`
 </script>
 
-<div id="show_{id}" class="main">
+<div id="show_{id}" class="main" class:played={show.played}>
     <MaterialButton
         on:click={click}
         on:dblclick={doubleClick}
-        isActive={active}
+        {isActive}
         showOutline={outline}
         class="context {$$props.class}{readOnly ? '_readonly' : ''}"
-        style="{borderRadiusStyle}font-weight: normal;--outline-color: {activeOutput || 'var(--secondary)'};{$notFound.show?.includes(id) ? 'background-color: rgb(255 0 0 / 0.2);' : ''}{style}"
+        style="font-weight: normal;--outline-color: {activeOutput || 'var(--secondary)'};{$notFound.show?.includes(id) ? 'background-color: rgb(255 0 0 / 0.2);' : ''}{style}{$$props.style || ''}"
         tab
     >
         <span style="display: flex;align-items: center;flex: 1;overflow: hidden;">
             {#if icon || show.locked}
-                <Icon id={iconID ? iconID : show.locked ? "locked" : "noIcon"} {custom} box={iconID === "ppt" ? 50 : 24} right />
+                <Icon id={show.played ? "check" : iconID ? iconID : show.locked ? "locked" : "noIcon"} custom={!show.played && custom} box={iconID === "ppt" ? 50 : 24} white={show.played} right />
             {/if}
 
-            {#if show.quickAccess?.number}
+            {#if active === "number" && show.quickAccess?.number}
                 <span style="color: var(--secondary);font-weight: bold;margin: 3px 5px;padding-inline-end: 3px;white-space: nowrap;">{show.quickAccess.number}</span>
             {/if}
 
             <HiddenInput value={newName} id={index !== null ? "show_" + id + "#" + index : "show_drawer_" + id} on:edit={rename} bind:edit={editActive} allowEmpty={false} allowEdit={(!show.type || show.type === "show") && !readOnly} />
+
+            {#if active !== "number" && show.quickAccess?.number}
+                <span style="opacity: 0.8;white-space: nowrap;">{show.quickAccess.number}</span>
+            {/if}
 
             {#if show.layoutInfo?.name}
                 <span class="layout" style="opacity: 0.6;font-style: italic;font-size: 0.9em;">{show.layoutInfo.name}</span>
@@ -211,6 +227,10 @@
 </div>
 
 <style>
+    .main {
+        width: 100%;
+    }
+
     .main :global(button) {
         width: 100%;
         justify-content: space-between;
@@ -218,6 +238,10 @@
     }
     .main :global(button p) {
         margin: 3px 5px;
+    }
+
+    .main.played :global(button:not(.isActive)) {
+        border-left: 4px double rgb(255 255 255 / 0.2) !important;
     }
 
     .layout {

@@ -14,8 +14,8 @@
     export let sections: any[]
     export let active: string
 
-    $: if (sections.length && !active) {
-        const flat = sections.flat().filter((a) => a && a !== "SEPERATOR")
+    $: if (sections.length && (!active || !sections.flat().find((a) => a.id === active))) {
+        const flat = sections.flat().filter((a) => a && a !== "SEPARATOR" && a.id !== "SEPARATOR" && a.id !== "TITLE")
         if (flat.length) setSubTab(flat[0].id)
     }
 
@@ -31,6 +31,12 @@
         activeVariableTagFilter.set([])
     }
 
+    function notATab(tab: any) {
+        if (tab === "SEPARATOR") return true
+        if (tab?.id === "SEPARATOR") return true
+        if (tab?.id === "TITLE") return true
+        return false
+    }
     function keydown(e: KeyboardEvent) {
         if ($activeEdit.items.length) return
         if (e.target?.closest(".edit") || !(e.ctrlKey || e.metaKey)) return
@@ -42,14 +48,14 @@
             let index = flatSections.findIndex((a) => a.id === active)
             let nextIndex = index + 1
 
-            while (nextIndex < flatSections.length && flatSections[nextIndex] === "SEPERATOR") nextIndex++
+            while (nextIndex < flatSections.length && notATab(flatSections[nextIndex])) nextIndex++
 
             if (nextIndex < flatSections.length) setSubTab(flatSections[nextIndex].id)
         } else if (e.key === "ArrowUp") {
             let index = flatSections.findIndex((a) => a.id === active)
             let nextIndex = index - 1
 
-            while (nextIndex >= 0 && flatSections[nextIndex] === "SEPERATOR") nextIndex--
+            while (nextIndex >= 0 && notATab(flatSections[nextIndex])) nextIndex--
 
             if (nextIndex >= 0) setSubTab(flatSections[nextIndex].id)
         }
@@ -82,7 +88,7 @@
                                     {/if}
                                 </div>
                             {/if}
-                        {:else if category === "SEPERATOR" || category?.id === "SEPERATOR"}
+                        {:else if category === "SEPARATOR" || category?.id === "SEPARATOR"}
                             <div class="separator">
                                 {#if category?.label}<div class="sepLabel">{translateText(category.label)}</div>{/if}
                                 <hr />

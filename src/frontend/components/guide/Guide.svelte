@@ -1,7 +1,8 @@
 <script lang="ts">
     import { fade } from "svelte/transition"
-    import { dictionary, guideActive, os } from "../../stores"
+    import { guideActive, os } from "../../stores"
     import { wait } from "../../utils/common"
+    import { translateText } from "../../utils/language"
     import Icon from "../helpers/Icon.svelte"
     import T from "../helpers/T.svelte"
     import Button from "../inputs/Button.svelte"
@@ -43,7 +44,7 @@
         let top = ""
         if (bounds.y + bounds.height <= 25 + 40) top = `top: ${bounds.y + bounds.height}px;` + ($os.platform === "win32" ? "transform: translateY(-25px);" : "")
 
-        currentStyle = `inset-inline-start: ${bounds.x}px;top: ${Math.max(top ? 0 : 70, bounds.y)}px;width: ${bounds.width}px;height: ${bounds.height}px;`
+        currentStyle = `left: ${bounds.x}px;top: ${Math.max(top ? 0 : 70, bounds.y)}px;width: ${bounds.width}px;height: ${bounds.height}px;`
         if (flip) currentTextStyle = `max-width: ${bounds.right}px;${top}`
         else currentTextStyle = `max-width: ${width - bounds.left}px;${top}`
     }
@@ -94,11 +95,11 @@
                         <T id="guide.skip" />
                     </Button>
                 {:else if steps[stepIndex + 1]}
-                    <Button on:click={() => stepIndex--} title={$dictionary.media?.previous}>
+                    <Button on:click={() => stepIndex--} title={translateText("media.previous")}>
                         <Icon id="back" size={1.5} white />
                     </Button>
                 {/if}
-                <Button on:click={() => (steps[stepIndex + 1] ? stepIndex++ : guideActive.set(false))} title={steps[stepIndex + 1] ? $dictionary.media?.next : $dictionary.actions?.done}>
+                <Button on:click={() => (steps[stepIndex + 1] ? stepIndex++ : guideActive.set(false))} title={translateText(steps[stepIndex + 1] ? "media.next" : "actions.done")}>
                     <Icon id={steps[stepIndex + 1] ? "arrow_forward" : "check"} size={1.5} white={!!steps[stepIndex + 1]} />
                 </Button>
             </div>
@@ -111,7 +112,7 @@
         position: absolute;
         width: 100%;
         height: 100%;
-        inset-inline-start: 0;
+        left: 0;
         top: 0;
 
         overflow: hidden;
@@ -126,7 +127,7 @@
     .focus {
         position: absolute;
         top: 0;
-        inset-inline-start: 0;
+        left: 0;
 
         /* min-height: 100px;
         min-width: 100px;
@@ -136,11 +137,13 @@
         box-shadow: 0 0 0 8000px rgb(0 0 0 / 40%);
 
         transition: 0.8s all;
+
+        border-radius: 2px;
     }
 
     .text {
         position: absolute;
-        inset-inline-start: 0;
+        left: 0;
         top: 0;
         transform: translateY(-70px);
 
@@ -150,6 +153,8 @@
 
         background-color: rgb(0 0 0 / 70%);
         padding: 8px 12px;
+
+        border-radius: 4px;
     }
     .text.flip {
         inset-inline-start: initial;
@@ -171,5 +176,7 @@
         padding: 10px;
 
         pointer-events: initial;
+
+        border-radius: 4px;
     }
 </style>

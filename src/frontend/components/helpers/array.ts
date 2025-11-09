@@ -1,5 +1,4 @@
-import type { Option } from "../../../types/Main"
-import { translate } from "../../utils/language"
+import { translateText } from "../../utils/language"
 
 // check if array has any data
 export function arrayHasData<T>(array: T, data: any): boolean {
@@ -78,8 +77,8 @@ export function sortObject<T extends Record<string, any>>(object: T[], key: keyo
     return object.sort((a, b) => {
         let textA: string = a[key] || ""
         let textB: string = b[key] || ""
-        if (a.default === true) textA = translate(textA) || textA.slice(textA.indexOf("."))
-        if (b.default === true) textB = translate(textB) || textB.slice(textB.indexOf("."))
+        if (a.default === true) textA = translateText(textA) || textA.slice(textA.indexOf("."))
+        if (b.default === true) textB = translateText(textB) || textB.slice(textB.indexOf("."))
 
         return textA.localeCompare(textB)
     })
@@ -95,31 +94,29 @@ export function sortObjectNumbers<T extends Record<string, any>>(object: T[], ke
 // sort any object.name by numbers in the front of the string
 export function sortByNameAndNumber<T extends Record<string, any>>(array: T[]) {
     return array.sort((a, b) => {
-        const aName = ((a.quickAccess?.number || "") + " " + a.name || "").trim()
-        const bName = ((b.quickAccess?.number || "") + " " + b.name || "").trim()
+        const aNumberStr = a.quickAccess?.number?.toString() || ""
+        const bNumberStr = b.quickAccess?.number?.toString() || ""
 
-        // get only number part if available
-        const extractNumber = (str) => {
-            const match = str.toString().match(/\d+/)
-            return match ? parseInt(match[0], 10) : Infinity
+        // Split into prefix letters + numeric part
+        const extractParts = (str: string) => {
+            const match = str.match(/^([A-Za-z]*)(\d+)?$/)
+            return { prefix: match?.[1] || "", number: match?.[2] ? parseInt(match[2], 10) : Infinity }
         }
-        const quickAccessNumberA = extractNumber(a.quickAccess?.number || "")
-        const quickAccessNumberB = extractNumber(b.quickAccess?.number || "")
 
-        // compare only number values when available
-        if (quickAccessNumberA !== quickAccessNumberB) return quickAccessNumberA - quickAccessNumberB
+        const aParts = extractParts(aNumberStr)
+        const bParts = extractParts(bNumberStr)
 
-        // get numbers in front of name
-        const matchA = aName.match(/^\d+/)
-        const matchB = bName.match(/^\d+/)
-        const numA = matchA ? parseInt(matchA[0], 10) : Infinity
-        const numB = matchB ? parseInt(matchB[0], 10) : Infinity
+        // Compare by prefix first
+        if (aParts.prefix !== bParts.prefix) return aParts.prefix.localeCompare(bParts.prefix)
 
-        if (numA !== numB) return numA - numB
+        // Then by numeric part
+        if (aParts.number !== bParts.number) return aParts.number - bParts.number
 
-        return aName.localeCompare(bName)
+        // Fall back to name
+        return (a.name || "").localeCompare(b.name || "")
     })
 }
+
 
 // sort object by name and numbers any location (file names)
 export function sortFilenames<T extends Record<string, any>>(filenames: T[]) {
@@ -197,19 +194,19 @@ export function clone<T>(object: T): T {
 }
 
 // not currently in use, but could be handy
-export function slowLoop(array, interval, returnFunc) {
-    loopFunction(0)
+// export function slowLoop(array, interval, returnFunc) {
+//     loopFunction(0)
 
-    function loopFunction(index) {
-        returnFunc(array[index])
+//     function loopFunction(index) {
+//         returnFunc(array[index])
 
-        if (index < array.length - 1) {
-            setTimeout(() => {
-                loopFunction(index + 1)
-            }, interval)
-        }
-    }
-}
+//         if (index < array.length - 1) {
+//             setTimeout(() => {
+//                 loopFunction(index + 1)
+//             }, interval)
+//         }
+//     }
+// }
 
 // randomize array items
 export function shuffleArray(array) {
@@ -219,12 +216,6 @@ export function shuffleArray(array) {
     }
 
     return array
-}
-
-// convert object to dropdown options
-export function convertToOptions(object) {
-    const options: Option[] = Object.keys(object).map((id) => ({ id, name: object[id].name }))
-    return sortByName(options)
 }
 
 // find the keys either added or changed in any object in an array
@@ -243,4 +234,45 @@ export function getChangedKeys(current: any[], previous: any[]) {
     })
 
     return changedKeys
+}
+
+
+export function rangeSelect(e: any, currentlySelected: (number | string)[], newSelection: (number | string)): (number | string)[] {
+    if (!e.ctrlKey && !e.metaKey && !e.shiftKey) return [newSelection]
+
+    if (e.ctrlKey || e.metaKey) {
+        if (currentlySelected.includes(newSelection)) {
+            return currentlySelected.filter((id) => id !== newSelection)
+        } else {
+            return [...currentlySelected, newSelection]
+        }
+    }
+
+    if (e.shiftKey && !currentlySelected.includes(newSelection) && !isNaN(Number(newSelection))) {
+        // add range between last selected and new selection
+        const lastSelected = Number(currentlySelected[currentlySelected.length - 1])
+        newSelection = Number(newSelection)
+        let first: number = newSelection + 1
+        let last: number = lastSelected
+        if (newSelection < lastSelected) {
+            first = lastSelected
+            last = newSelection - 1
+        }
+
+        for (let i = last + 1; i < first; i++) {
+            if (!currentlySelected.includes(i)) currentlySelected.push(i)
+        }
+
+        // remove duplicates
+        currentlySelected = [...new Set(currentlySelected)]
+        // sort by value (shift key last selected relies on unsorted order)
+        // currentlySelected.sort((a, b) => a - b)
+    }
+
+    return currentlySelected
+}
+
+// compare two objects, check that they are identical, regardless of key order
+export function areObjectsEqual(a: Record<string, any>, b: Record<string, any>): boolean {
+    return JSON.stringify(Object.entries(a).sort()) === JSON.stringify(Object.entries(b).sort())
 }

@@ -1,31 +1,30 @@
+import upath from "upath"
 import path, { join } from "path"
-// @ts-ignore (strange Rollup TS build problem, suddenly not realizing that the decleration exists)
-import PPTX2Json from "pptx2json"
 import protobufjs from "protobufjs"
-// @ts-ignore
+// @ts-ignore (strange Rollup TS build problem, suddenly not realizing that the decleration exists)
 import SqliteToJson from "sqlite-to-json"
 import sqlite3 from "sqlite3"
+import MDBReader from "mdb-reader"
 // @ts-ignore
 import WordExtractor from "word-extractor"
 import { ToMain } from "../../types/IPC/ToMain"
 import { sendToMain } from "../IPC/main"
+import { pptToShow } from "../output/ppt/pptToShow"
 import { dataFolderNames, doesPathExist, getDataFolder, getExtension, makeDir, readFileAsync, readFileBufferAsync, writeFile } from "../utils/files"
 import { detectFileType } from "./bibleDetecter"
 import { filePathHashCode } from "./thumbnails"
 import { decompress, isZip } from "./zip"
-import MDBReader from "mdb-reader"
 
 type FileData = { content: Buffer | string | object; name?: string; extension?: string }
 
 const specialImports = {
-    powerpoint: async (files: string[]) => {
-        const data: FileData[] = []
+    powerpoint: async (files: string[], dataPath: string) => {
+        sendToMain(ToMain.ALERT, "popup.importing")
 
-        // https://www.npmjs.com/package/pptx2json
-        const pptx2json = new PPTX2Json()
+        const data: FileData[] = []
         for await (const filePath of files) {
-            const json = await pptx2json.toJson(filePath)
-            data.push({ name: getFileName(filePath), content: json })
+            const json = await pptToShow(filePath, dataPath)
+            if (json) data.push({ name: getFileName(filePath), content: json })
         }
 
         return data
@@ -117,7 +116,7 @@ export async function importShow(id: string, files: string[] | null, importSetti
     }
 
     if (id === "songbeamer") {
-        const encoding = importSettings.encoding.id
+        const encoding = importSettings.encoding
         const fileContents = await Promise.all(files.map(async (file) => await readFile(file, encoding)))
         const custom = {
             files: fileContents,
@@ -145,7 +144,7 @@ export async function importShow(id: string, files: string[] | null, importSetti
         return
     }
 
-    if (importId in specialImports) data = await specialImports[importId as keyof typeof specialImports](files)
+    if (importId in specialImports) data = await specialImports[importId as keyof typeof specialImports](files, importSettings?.path || "")
     else {
         // TXT | FreeShow | ProPresenter | VidoePsalm | OpenLP | OpenSong | XML Bible | Lessons.church
         for (let i = 0; i < files.length; i += BATCH_SIZE) {
@@ -264,19 +263,17 @@ function extractZipDataAndMedia(filePath: string, importFolder: string) {
     // write files
     const replacedMedia: { [key: string]: string } = {}
     dataContent.files?.forEach((rawPath: string) => {
-        const currentPath = path.normalize(rawPath)
-
         // check if path already exists on the system
-        if (doesPathExist(currentPath)) return
+        if (doesPathExist(rawPath)) return
 
-        const fileName = path.basename(currentPath)
+        const fileName = upath.basename(rawPath)
         const file = zipData.find((a) => a.name === fileName)?.content
 
         // get file path hash to prevent the same file importing multiple times
         // this also ensures files with the same name don't get overwritten
-        const ext = path.extname(fileName)
-        const pathHash = `${path.basename(currentPath, ext)}_${filePathHashCode(currentPath)}${ext}`
-        const newMediaPath = path.join(importFolder, pathHash)
+        const ext = upath.extname(fileName)
+        const pathHash = `${upath.basename(rawPath, ext)}_${filePathHashCode(upath.toUnix(rawPath))}${ext}`
+        const newMediaPath = upath.join(importFolder, pathHash)
 
         if (!file) return
         replacedMedia[rawPath] = newMediaPath

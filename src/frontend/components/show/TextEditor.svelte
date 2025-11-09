@@ -1,7 +1,7 @@
 <script lang="ts">
     import type { Show } from "../../../types/Show"
     import { getQuickExample } from "../../converters/txt"
-    import { includeEmptySlides, textEditActive, textEditZoom } from "../../stores"
+    import { activePopup, textEditActive, textEditZoom } from "../../stores"
     import { transposeText } from "../../utils/chordTranspose"
     import Icon from "../helpers/Icon.svelte"
     import FloatingInputs from "../input/FloatingInputs.svelte"
@@ -13,10 +13,14 @@
 
     export let currentShow: Show | undefined
 
-    $: allowEmpty = $includeEmptySlides
-
     let text = ""
-    $: if (currentShow) text = getPlainEditorText("", allowEmpty)
+    $: if (currentShow) text = getPlainEditorText()
+
+    // Ctrl+F in shortcuts.ts does not get triggered when a text input is active, so we trigger from here as well
+    function keydown(e: any) {
+        if (!e.ctrlKey && !e.metaKey) return
+        if (e.key === "f") activePopup.set("find_replace")
+    }
 
     // transpose chords
     function transposeUp() {
@@ -29,7 +33,7 @@
     $: showHasChords = Object.values(currentShow?.slides || {}).find((a) => a.items?.find((a) => a.lines?.find((a) => a.chords)))
 </script>
 
-<Notes disabled={currentShow?.locked} style="padding: 30px;height: calc(100% - 28px);font-size: {$textEditZoom / 8}em;" placeholder={getQuickExample()} value={text} on:change={(e) => formatText(e.detail)} />
+<Notes disabled={currentShow?.locked} style="padding: 30px;font-size: {$textEditZoom / 8}em;" placeholder={getQuickExample()} value={text} on:change={(e) => formatText(e.detail)} on:keydown={keydown} />
 
 <FloatingInputs arrow let:open>
     <MaterialZoom hidden={!open} columns={$textEditZoom / 10} min={0.5} max={2} defaultValue={1} addValue={-0.1} on:change={(e) => textEditZoom.set(e.detail * 10)} />

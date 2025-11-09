@@ -1,7 +1,7 @@
 <script lang="ts">
     import { uid } from "uid"
     import type { Tree } from "../../../types/Projects"
-    import { activeEdit, activeProject, activeRename, activeShow, dictionary, drawer, focusMode, folders, labelsDisabled, openedFolders, projects, projectTemplates, projectView, saved, showRecentlyUsedProjects, sorted } from "../../stores"
+    import { activeEdit, activeProject, activeRename, activeShow, drawer, focusMode, folders, labelsDisabled, openedFolders, projects, projectTemplates, projectView, saved, showRecentlyUsedProjects, sorted } from "../../stores"
     import { translateText } from "../../utils/language"
     import { getAccess } from "../../utils/profile"
     import { clone, keysToID, removeDuplicateValues, sortByName, sortByTimeNew } from "../helpers/array"
@@ -11,7 +11,6 @@
     import { checkInput } from "../helpers/showActions"
     import T from "../helpers/T.svelte"
     import FloatingInputs from "../input/FloatingInputs.svelte"
-    import Button from "../inputs/Button.svelte"
     import HiddenInput from "../inputs/HiddenInput.svelte"
     import MaterialButton from "../inputs/MaterialButton.svelte"
     import Autoscroll from "../system/Autoscroll.svelte"
@@ -69,7 +68,7 @@
     function sortFolders(parent = "/", index = 0, path = "") {
         let filtered = tree.filter((a) => a.parent === parent).map((a) => ({ ...a, index, path }))
         filtered.forEach((folder) => {
-            const rootParentId = path.split("/")[0] || folder.id!
+            const rootParentId = path.split("/")[0] || folder.id
             if (profile[rootParentId] === "none") return
 
             const isReadOnly = profile[rootParentId] === "read"
@@ -84,7 +83,7 @@
 
     $: projectActive = !$projectView && $activeProject !== null
 
-    function createProject(folder: boolean = false) {
+    function createProject(folder = false) {
         let parent = interactedFolder || ($folders[$projects[$activeProject || ""]?.parent] ? $projects[$activeProject || ""]?.parent || "/" : "/")
         if (profile[parent] === "none" || tree.find((a) => a.id === parent)?.readOnly) parent = "/"
         history({ id: "UPDATE", newData: { replace: { parent } }, location: { page: "show", id: `project${folder ? "_folder" : ""}` } })
@@ -166,7 +165,7 @@
         setTimeout(() => activeRename.set("project_" + projectId))
     }
 
-    let editActive: boolean = false
+    let editActive = false
     function rename(value: string, id: string) {
         if (editActive) return
 
@@ -211,11 +210,9 @@
     <span class="tabs">
         {#if projectActive || recentlyUsedList.length}
             {#if !$focusMode}
-                <Button style="flex: 1;padding: 0.3em 0.5em;" on:click={back} active={$projectView} center dark title={$dictionary.remote?.projects}>
-                    <Icon id="back" white />
-                </Button>
+                <MaterialButton style="flex: 1;padding: 0.3em 0.5em;" icon="back" title="remote.projects" on:click={back} />
                 <!-- {recentlyUsedList.length ? '' : 'border-bottom: 1px solid var(--secondary);'} -->
-                <div style="flex: 7;max-width: calc(100% - 43px);" class="header context #projectTab _close" title={$dictionary.remote?.project + ": " + ($projects[$activeProject || ""]?.name || "")}>
+                <div style="flex: 7;max-width: calc(100% - 43px);" class="header context #projectTab _close" title={translateText("remote.project: ") + ($projects[$activeProject || ""]?.name || "")}>
                     <!-- <Icon id="project" white right /> -->
                     {#if recentlyUsedList.length}
                         <p style="font-style: italic;opacity: 0.7;"><T id="info.recently_used" /></p>
@@ -272,7 +269,7 @@
                             tab
                         >
                             <Icon id="templates" white={$projects[project.id]?.archived} />
-                            <HiddenInput value={project.name} id={"project_" + project.id} on:edit={(e) => rename(project.id, e.detail.value)} bind:edit={editActive} />
+                            <HiddenInput value={project.name} id={"project_" + project.id} on:edit={(e) => rename(e.detail.value, project.id)} bind:edit={editActive} />
                         </MaterialButton>
                     {/each}
                 </div>

@@ -1,6 +1,6 @@
 <script lang="ts">
     import { fade } from "svelte/transition"
-    import { activePage, activePopup, contextActive, contextData, localeDirection, os, special, spellcheck, theme, themes } from "../../stores"
+    import { activePage, activePopup, contextActive, contextData, currentWindow, localeDirection, os, special, spellcheck, theme, themes } from "../../stores"
     import { closeContextMenu } from "../../utils/shortcuts"
     import { getEditItems } from "../edit/scripts/itemHelpers"
     import { hexToRgb } from "../helpers/color"
@@ -17,6 +17,7 @@
     let side: "right" | "left" = "right"
     let translate = 0
 
+    let autoCloseTimeout: NodeJS.Timeout | null = null
     function onContextMenu(e: MouseEvent) {
         spellcheck.set(null)
 
@@ -55,6 +56,11 @@
         if (x + (250 + 150) > window.innerWidth) side = "left"
 
         contextActive.set(true)
+
+        // auto close context menu in output window, in case it's opened on accident
+        if (!$currentWindow) return
+        if (autoCloseTimeout) clearTimeout(autoCloseTimeout)
+        autoCloseTimeout = setTimeout(closeContextMenu, 3000)
     }
 
     function getContextMenu(id: string | null) {
@@ -73,7 +79,7 @@
 
         menus.forEach((c2: string, i: number) => {
             if (contextMenuLayouts[c2]) menu.push(...contextMenuLayouts[c2])
-            if (i < menus.length - 1) menu.push("SEPERATOR")
+            if (i < menus.length - 1) menu.push("SEPARATOR")
         })
 
         return menu
@@ -151,13 +157,13 @@
             <SpellCheckMenu />
 
             {#each activeMenu as id}
-                {#if id === "SEPERATOR"}
+                {#if id === "SEPARATOR"}
                     <hr />
                 {:else if contextMenuItems[id]?.items}
                     <!-- conditional menus -->
                     {#if shouldShowMenuWithItems(id)}
                         <!-- {activeMenu.length > 2 ? translate : 0} -->
-                        <ContextChild {id} {contextElem} {side} {translate} />
+                        <ContextChild {id} {contextElem} {side} translate={y > 400 ? translate : 0} />
                     {/if}
                 {:else}
                     <ContextItem {id} {contextElem} />

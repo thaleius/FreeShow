@@ -38,7 +38,7 @@ export function joinTimeBig(time: number, showHours = true) {
     return timeValue
 }
 
-export function dateToString(date: string | number | Date, full = false, d: any = {}): string {
+export function dateToString(date: string | number | Date, full = false, d = get(dictionary)): string {
     if (!date) return ""
 
     date = new Date(date)
@@ -82,24 +82,6 @@ export function getMonthName(month: number, d = get(dictionary), uppercase = fal
 export function getDateAndTimeString(time: number) {
     const date = splitDate(new Date(time))
     return dateToString(time) + " " + addZero(date.hours) + ":" + addZero(date.minutes)
-}
-
-export function secondsToTimes(time: number) {
-    // let hours: number = Math.floor((time / (1000 * 60 * 60)) % 24);
-    // let minutes: number = Math.floor((time / 1000 / 60) % 60);
-    // let seconds: number = Math.floor((time / 1000) % 60);
-    const hours: number = Math.floor((time / (60 * 60)) % 24)
-    const minutes: number = Math.floor((time / 60) % 60)
-    const seconds: number = Math.floor(time % 60)
-
-    return { hours, minutes, seconds }
-}
-
-export function format(t: string, { hours, minutes, seconds }: any) {
-    if (t === "HH") return addZero(hours)
-    if (t === "MM") return addZero(minutes)
-    if (t === "SS") return addZero(seconds)
-    return ""
 }
 
 export const padString = (a: number) => a.toString().padStart(2, "0")

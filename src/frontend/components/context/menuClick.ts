@@ -7,6 +7,7 @@ import type { MediaStyle, Selected, SelectIds } from "../../../types/Main"
 import type { Item, LayoutRef, Slide, SlideData } from "../../../types/Show"
 import { ShowObj } from "../../classes/Show"
 import { sendMain } from "../../IPC/main"
+import { cameraManager } from "../../media/cameraManager"
 import { changeSlideGroups, mergeSlides, mergeTextboxes, splitItemInTwo } from "../../show/slides"
 import {
     $,
@@ -27,10 +28,10 @@ import {
     activeVariableTagFilter,
     audioFolders,
     categories,
+    colorbars,
     currentOutputSettings,
     currentWindow,
     dataPath,
-    dictionary,
     drawer,
     drawerTabsData,
     effects,
@@ -40,6 +41,7 @@ import {
     focusMode,
     forceClock,
     guideActive,
+    livePrepare,
     media,
     mediaFolders,
     outLocked,
@@ -54,6 +56,7 @@ import {
     projectView,
     quickSearchActive,
     refreshEditSlide,
+    scriptures,
     selected,
     settingsTab,
     showRecentlyUsedProjects,
@@ -71,7 +74,7 @@ import {
     variables
 } from "../../stores"
 import { hideDisplay, newToast, triggerFunction, wait } from "../../utils/common"
-import { translate } from "../../utils/language"
+import { translateText } from "../../utils/language"
 import { confirmCustom } from "../../utils/popup"
 import { send } from "../../utils/request"
 import { initializeClosing, save } from "../../utils/save"
@@ -79,6 +82,7 @@ import { closeContextMenu } from "../../utils/shortcuts"
 import { updateThemeValues } from "../../utils/updateSettings"
 import { getActionTriggerId } from "../actions/actions"
 import { moveStageConnection } from "../actions/apiHelper"
+import { createScriptureShow } from "../drawer/bible/scripture"
 import { stopMediaRecorder } from "../drawer/live/recorder"
 import { playPauseGlobal } from "../drawer/timers/timers"
 import { addChords } from "../edit/scripts/chords"
@@ -89,11 +93,12 @@ import { clone, removeDuplicates, sortObjectNumbers } from "../helpers/array"
 import { copy, cut, deleteAction, duplicate, paste, selectAll } from "../helpers/clipboard"
 import { history, redo, undo } from "../helpers/history"
 import { getExtension, getFileName, getMediaStyle, getMediaType, removeExtension, splitPath } from "../helpers/media"
-import { defaultOutput, getActiveOutputs, getCurrentStyle, setOutput, toggleOutput } from "../helpers/output"
+import { defaultOutput, getActiveOutputs, getCurrentStyle, setOutput, toggleOutput, toggleOutputs } from "../helpers/output"
 import { select } from "../helpers/select"
 import { checkName, formatToFileName, getLayoutRef, removeTemplatesFromShow, updateShowsList } from "../helpers/show"
 import { sendMidi } from "../helpers/showActions"
 import { _show } from "../helpers/shows"
+import { clearSlide } from "../output/clear"
 import { defaultThemes } from "../settings/tabs/defaultThemes"
 import { activeProject } from "./../../stores"
 import type { ContextMenuItem } from "./contextMenus"
@@ -132,7 +137,7 @@ const clickActions = {
     focus_mode: () => {
         const project = get(projects)[get(activeProject) || ""]
         if (!project?.shows?.length) {
-            newToast("$empty.project_select")
+            newToast("empty.project_select")
             return
         }
 
@@ -506,7 +511,7 @@ const clickActions = {
             }))
 
         projects.update((a) => {
-            if (!a[get(activeProject)!]) return a
+            if (!a[get(activeProject)!]?.shows) return a
 
             a[get(activeProject)!].shows.push(...obj.sel!.data)
             return a
@@ -536,7 +541,7 @@ const clickActions = {
         const layoutId = uid()
         const show = new ShowObj(false, "presentation", layoutId, Date.now(), false)
         const folderName = splitPath(data[0]?.path).at(-2) || ""
-        show.name = checkName(get(dictionary).create_show?.slideshow + (folderName ? `" "${folderName}` : ""))
+        show.name = checkName(translateText("create_show.slideshow") + (folderName ? `" "${folderName}` : ""))
 
         const videoData = { muted: false, loop: false }
         const duration = 6
@@ -594,6 +599,22 @@ const clickActions = {
         popupData.set({ id })
         activePopup.set("category_action")
     },
+    category_template: (obj: ObjData) => {
+        const id = obj.sel?.data[0]
+        if (!id) return
+
+        const selectedTemplate = get(categories)[id]?.template
+
+        popupData.set({ active: selectedTemplate, allowEmpty: true, trigger: (value) => setCategoryTemplate(value) })
+        activePopup.set("select_template")
+
+        function setCategoryTemplate(templateId: string) {
+            categories.update(a => {
+                a[id].template = templateId
+                return a
+            })
+        }
+    },
     use_as_archive: (obj: ObjData) => {
         const categoryStores = {
             category_shows: () => categories.update(toggleArchive),
@@ -613,7 +634,7 @@ const clickActions = {
     },
     archive: (obj: ObjData) => {
         obj.sel?.data?.forEach(({ id }) => {
-            let project = get(projects)[id]
+            const project = get(projects)[id]
             if (!project) return
 
             history({ id: "UPDATE", newData: { key: "archived", data: !project.archived }, oldData: { id }, location: { page: "show", id: "project_key" } })
@@ -624,14 +645,7 @@ const clickActions = {
     },
 
     // output
-    force_output: () => {
-        const enabledOutputs = getActiveOutputs(get(outputs), false)
-        enabledOutputs.forEach((id) => {
-            const output = { id, ...get(outputs)[id] }
-            // , force: e.ctrlKey || e.metaKey
-            send(OUTPUT, ["DISPLAY"], { enabled: true, output, force: true })
-        })
-    },
+    force_output: () => toggleOutputs(null, { force: true }),
     align_with_screen: () => send(OUTPUT, ["ALIGN_WITH_SCREEN"]),
     choose_screen: () => {
         popupData.set({ activateOutput: true })
@@ -650,15 +664,29 @@ const clickActions = {
         setTimeout(() => {
             outputs.update((output) => {
                 // should match the outputs list in MultiOutputs.svelte
-                const showingOutputsList = Object.values(output).filter((a) => a.enabled && !a.hideFromPreview && !a.isKeyOutput)
+                const showingOutputsList = Object.values(output).filter((a) => a.enabled && !a.hideFromPreview)
                 const newValue = !output[outputId].hideFromPreview
 
-                if (newValue && showingOutputsList.length <= 1) newToast("$toast.one_output")
+                if (newValue && showingOutputsList.length <= 1) newToast("toast.one_output")
                 else output[outputId].hideFromPreview = !output[outputId].hideFromPreview
 
                 return output
             })
         }, 100)
+    },
+    test_pattern: (obj: ObjData) => {
+        const id = obj.contextElem?.id || ""
+        const testPattern = get(colorbars)
+        if (testPattern[id]) delete testPattern[id]
+        else testPattern[id] = "colorbars.png"
+        colorbars.set(testPattern)
+    },
+    live_prepare: (obj: ObjData) => {
+        const id = obj.contextElem?.id || ""
+        const prepare = get(livePrepare)
+        if (prepare[id]) delete prepare[id]
+        else prepare[id] = true
+        livePrepare.set(prepare)
     },
 
     // new
@@ -680,12 +708,12 @@ const clickActions = {
         }
 
         if (obj.contextElem?.classList.contains("#category_media") || obj.sel?.id === "category_media") {
-            sendMain(Main.OPEN_FOLDER, { channel: "MEDIA", title: get(dictionary).new?.folder })
+            sendMain(Main.OPEN_FOLDER, { channel: "MEDIA", title: translateText("new.folder") })
             return
         }
 
         if (obj.contextElem?.classList.contains("#category_audio") || obj.sel?.id === "category_audio") {
-            sendMain(Main.OPEN_FOLDER, { channel: "AUDIO", title: get(dictionary).new?.folder })
+            sendMain(Main.OPEN_FOLDER, { channel: "AUDIO", title: translateText("new.folder") })
             return
         }
     },
@@ -705,11 +733,30 @@ const clickActions = {
         activePopup.set("create_collection")
     },
     create_show: (obj: ObjData) => {
-        if (obj.contextElem?.classList.contains("chapters")) {
+        if (obj.contextElem?.classList.contains("#media_preview")) {
+            const path = obj.contextElem.id
+            const name = removeExtension(getFileName(path))
+            const mediaType = getMediaType(getExtension(path))
+
+            const layoutId = uid()
+            const show = new ShowObj(false, "presentation", layoutId, Date.now(), false)
+            show.name = checkName(name)
+
+            const slideId = uid()
+            show.slides[slideId] = { group: name, color: null, settings: {}, notes: "", items: [] }
+
+            const mediaId = uid(5)
+            show.media[mediaId] = { path, name, ...(mediaType === "video" ? { muted: false, loop: false } : {}) }
+
+            const layoutSlides: SlideData[] = [{ id: slideId, background: mediaId }]
+            show.layouts[layoutId].slides = layoutSlides
+
+            history({ id: "UPDATE", newData: { data: show, remember: { project: get(activeProject) } }, location: { page: "show", id: "show" } })
+        } else if (obj.contextElem?.classList.contains("chapters")) {
             triggerFunction("scripture_selectAll")
-            setTimeout(() => triggerFunction("scripture_newShow"))
+            setTimeout(createScriptureShow)
         } else if (obj.sel?.id === "scripture") {
-            triggerFunction("scripture_newShow")
+            createScriptureShow()
         }
     },
 
@@ -755,7 +802,7 @@ const clickActions = {
     import: (obj: ObjData) => {
         if (obj.contextElem?.classList.value.includes("#projectsTab")) {
             const extensions = ["project", "shows", "json", "zip"]
-            const name = translate("formats.project")
+            const name = translateText("formats.project")
             sendMain(Main.IMPORT, { channel: "freeshow_project", format: { extensions, name }, settings: { path: get(dataPath) } })
             return
         }
@@ -827,6 +874,24 @@ const clickActions = {
         const index: number = obj.sel.data[0] ? obj.sel.data[0].index + 1 : get(projects)[get(activeProject)!]?.shows?.length || 0
         history({ id: "UPDATE", newData: { key: "shows", index }, oldData: { id: get(activeProject) }, location: { page: "show", id: "section" } })
     },
+    mark_played: (obj: ObjData) => {
+        const projectId = get(activeProject)
+        const indexes = (obj.sel?.data || []).map(item => Number(item.index))
+        if (!projectId || !indexes.length) return
+
+        projects.update((a) => {
+            if (!a[projectId]?.shows) return a
+
+            const newState = !a[projectId].shows[indexes[0]]?.played
+
+            indexes.forEach(index => {
+                if (!a[projectId].shows[index]) return
+                a[projectId].shows[index].played = newState
+            })
+
+            return a
+        })
+    },
     copy_to_template: (obj: ObjData) => {
         let project = clone(get(projects)[obj.sel?.data?.[0]?.id])
         if (!project) return
@@ -836,8 +901,8 @@ const clickActions = {
         let id = uid()
 
         // find existing with the same name
-        const existing = Object.entries(get(projectTemplates)).find(([_id, a]) => a.name === project.name)
-        if (existing) id = existing[0]
+        const existingId = Object.entries(get(projectTemplates)).find(([_id, a]) => a.name === project.name)?.[0] || ""
+        if (existingId) id = existingId
         else activeRename.set("project_" + id)
 
         history({ id: "UPDATE", newData: { data: project }, oldData: { id }, location: { page: "show", id: "project_template" } })
@@ -963,8 +1028,15 @@ const clickActions = {
         } else if (obj.sel.id === "action") {
             const firstActionId = obj.sel.data[0]?.id
             const action = get(actions)[firstActionId]
-            const mode = action.shows?.length ? "slide_midi" : ""
-            popupData.set({ id: firstActionId, mode })
+
+            popupData.set({ id: firstActionId })
+
+            // slide midi
+            if (action.shows?.length) {
+                activePopup.set("slide_midi")
+                return
+            }
+
             activePopup.set("action")
         } else if (obj.sel.id === "timer") {
             activePopup.set("timer")
@@ -1204,11 +1276,18 @@ const clickActions = {
         const outputStyle = get(styles)[currentOutput.style || ""]
         const mediaStyle: MediaStyle = getMediaStyle(get(media)[path], outputStyle)
 
+        const videoType = get(media)[path]?.videoType || ""
+
         // clear slide text
-        if (get(projects)[get(activeProject) || ""]?.shows?.find((a) => a.id === path)) setOutput("slide", null)
-        setOutput("background", { path, ...mediaStyle })
+        // if (get(projects)[get(activeProject) || ""]?.shows?.find((a) => a.id === path)) clearSlide()
+        if (videoType === "foreground") clearSlide()
+
+        const type = getMediaType(getExtension(path))
+        setOutput("background", { path, ...mediaStyle, type, loop: false, muted: false })
     },
     play_no_audio: (obj: ObjData) => {
+        if (get(outLocked)) return
+
         const path = obj.sel?.data[0].path || obj.sel?.data[0].id
         if (!path) return
 
@@ -1218,25 +1297,45 @@ const clickActions = {
 
         const mediaStyle: MediaStyle = getMediaStyle(get(media)[path], currentStyle)
 
-        if (!get(outLocked)) setOutput("background", { path, ...mediaStyle, type: getMediaType(getExtension(path)), muted: true })
+        const type = getMediaType(getExtension(path))
+        setOutput("background", { path, ...mediaStyle, type, loop: true, muted: true })
     },
     play_no_filters: (obj: ObjData) => {
+        if (get(outLocked)) return
+
         const path = obj.sel?.data[0].path || obj.sel?.data[0].id
         if (!path) return
-        if (!get(outLocked)) setOutput("background", { path, type: getMediaType(getExtension(path)) })
+
+        const videoType = get(media)[path]?.videoType || ""
+        const loop = videoType === "foreground" ? false : true
+        const muted = videoType === "foreground" ? false : true
+
+        const type = getMediaType(getExtension(path))
+        setOutput("background", { path, type, loop, muted })
     },
     favourite: (obj: ObjData) => {
         if (!obj.sel) return
 
+        if (obj.sel.id === "category_scripture") {
+            const isFavourite = get(scriptures)[obj.sel.data[0]]?.favorite !== true
+            scriptures.update((a) => {
+                obj.sel!.data.forEach((id) => {
+                    a[id].favorite = isFavourite
+                })
+                return a
+            })
+            return
+        }
+
         const favourite: boolean = get(media)[obj.sel.data[0].path || obj.sel.data[0].id]?.favourite !== true
-        obj.sel.data.forEach((card) => {
-            const path = card.path || card.id
-            media.update((a) => {
+        media.update((a) => {
+            obj.sel!.data.forEach((card) => {
+                const path = card.path || card.id
                 if (!a[path]) a[path] = { filter: "" }
                 if (obj.sel!.id === "audio") a[path].audio = true
                 a[path].favourite = favourite
-                return a
             })
+            return a
         })
     },
     effects_library_add: (obj: ObjData) => {
@@ -1276,13 +1375,25 @@ const clickActions = {
     },
 
     // live
+    startup_activate: (obj: ObjData) => {
+        if (obj.sel?.id !== "camera") return
+
+        let cameraIds: string[] = obj.sel.data.filter(a => a.type === "camera").map(a => a.id)
+        const currentlySelected = cameraManager.getStartupCameras()
+        const shouldActivate = !currentlySelected.includes(cameraIds[0])
+
+        if (shouldActivate) cameraIds = [...(new Set([...currentlySelected, ...cameraIds]))]
+        else cameraIds = currentlySelected.filter(id => !cameraIds.includes(id))
+
+        cameraManager.setStartupCameras(cameraIds)
+    },
     recording: (obj: ObjData) => {
         if (get(activeRecording)) {
             stopMediaRecorder()
         } else {
             const mediaData = JSON.parse(obj.contextElem?.getAttribute("data-media") || "{}")
             if (!mediaData.video) {
-                newToast("$toast.error_media")
+                newToast("toast.error_media")
                 return
             }
 
@@ -1499,7 +1610,7 @@ const clickActions = {
     },
     reset: (obj: ObjData) => {
         if (obj.sel?.id === "style") {
-            const defaultStyle = { name: get(dictionary).example?.default || "Default" }
+            const defaultStyle = { name: translateText("example.default") }
 
             obj.sel.data.forEach(({ id }) => {
                 const styleId = id || (get(styles).default ? uid() : "default")
@@ -1574,10 +1685,10 @@ function changeSlideAction(obj: ObjData, id: string) {
 
         history({ id: "SHOW_LAYOUT", newData: { key: "actions", data: layoutActions, indexes: [layoutSlide] } })
 
-        const data = { id: midiId, index: layoutSlide, mode: "slide_midi" }
+        const data = { id: midiId, index: layoutSlide }
 
         popupData.set(data)
-        activePopup.set("action")
+        activePopup.set("slide_midi")
 
         return
     }
@@ -1728,7 +1839,7 @@ export async function removeSlide(data: any[], type: "delete" | "remove" = "dele
 
     if (type === "delete") {
         const selectedInDifferentLayout = checkIfAddedToDifferentLayout(ref, data)
-        const prompt = `${get(dictionary).confirm?.statement_slide_exists_layout} ${get(dictionary).confirm?.question_delete}`
+        const prompt = translateText("confirm.statement_slide_exists_layout confirm.question_delete")
         if (selectedInDifferentLayout && !(await confirmCustom(prompt))) return
     }
 
@@ -1799,7 +1910,7 @@ export async function format(id: string, obj: ObjData, data: any = null) {
     const ref = getLayoutRef()
     if (get(textEditActive)) {
         // select all slides
-        slideIds = _show().slides().get().map(({ id }) => id)
+        slideIds = _show().slides().get().map((a) => a.id)
     } else if (obj.sel?.id?.includes("slide")) {
         slideIds = obj.sel.data.map((a) => ref[a.index].id)
     } else {
@@ -1845,7 +1956,7 @@ function checkIfAddedToDifferentLayout(ref: LayoutRef[], data: any[]) {
     // check if slide is added to any other layout
     return data.find(({ index }) => {
         const parentSlideId = ref[index]?.parent?.id ?? ref[index]?.id
-        return showLayouts.find((a) => a.slides.find((a) => a.id === parentSlideId))
+        return showLayouts.find((a) => a.slides.find((slide) => slide.id === parentSlideId))
     })
 }
 

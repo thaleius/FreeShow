@@ -8,7 +8,7 @@
     import type { Styles } from "../../../types/Settings"
     import type { AnimationData, LayoutRef, OutBackground, OutSlide, Slide, SlideData, Template, Overlays as TOverlays } from "../../../types/Show"
     import { requestMain } from "../../IPC/main"
-    import { colorbars, currentWindow, customMessageCredits, drawSettings, drawTool, effects, media, outputs, overlays, showsCache, styles, templates, transitionData } from "../../stores"
+    import { allOutputs, colorbars, currentWindow, customMessageCredits, drawSettings, drawTool, effects, media, outputs, overlays, showsCache, styles, templates, transitionData } from "../../stores"
     import { wait } from "../../utils/common"
     import { custom } from "../../utils/transitions"
     import Draw from "../draw/Draw.svelte"
@@ -35,7 +35,7 @@
     export let styleIdOverride = ""
     export let outOverride: OutData | null = null
 
-    $: currentOutput = $outputs[outputId] || {}
+    $: currentOutput = $outputs[outputId] || $allOutputs[outputId] || {}
 
     // output styling
     $: currentStyling = getCurrentStyle($styles, styleIdOverride || currentOutput.style)
@@ -253,8 +253,7 @@
     $: cropping = currentOutput.cropping || currentStyle.cropping
 
     // values
-    $: isKeyOutput = currentOutput.isKeyOutput
-    $: backgroundColor = isKeyOutput ? "black" : currentOutput.transparent ? "transparent" : styleTemplate?.settings?.backgroundColor || currentSlide?.settings?.color || currentStyle.background || "black"
+    $: backgroundColor = currentOutput.transparent ? "transparent" : styleTemplate?.settings?.backgroundColor || currentSlide?.settings?.color || currentStyle.background || "black"
     $: messageText = $showsCache[slide?.id || ""]?.message?.text?.replaceAll("\n", "<br>") || ""
     $: metadataValue = metadata.value?.length && (metadata.display === "always" || (metadata.display?.includes("first") && slide?.index === 0) || (metadata.display?.includes("last") && slide?.index === currentLayout.length - 1))
     $: styleBackground = currentStyle?.clearStyleBackgroundOnText && (slide || background) ? "" : currentStyle?.backgroundImage || ""
@@ -265,10 +264,11 @@
     $: overlaysActive = !!(layers.includes("overlays") && clonedOverlays)
 
     // draw zoom
-    $: drawZoom = $drawTool === "zoom" ? ($drawSettings.zoom?.size || 200) / 100 : 1
+    $: zoomActive = currentOutput.active || (mirror && !preview)
+    $: drawZoom = $drawTool === "zoom" && zoomActive ? ($drawSettings.zoom?.size || 200) / 100 : 1
 
     // CLEARING
-    $: if (slide !== undefined) updateSlide()
+    $: if (slide !== undefined || layers) updateSlide()
     let actualSlide: OutSlide | null = null
     let actualSlideData: SlideData | null = null
     let actualCurrentSlide: Slide | null = null
@@ -276,9 +276,11 @@
     let isSlideClearing = false
     function updateSlide() {
         // update clearing variable before setting slide value (used for conditions to not show up again while clearing)
-        isSlideClearing = !slide
+        const slideActive = layers.includes("slide")
+        isSlideClearing = !slide || !slideActive
+
         setTimeout(() => {
-            actualSlide = clone(slide)
+            actualSlide = slideActive ? clone(slide) : null
             actualSlideData = clone(slideData)
             actualCurrentSlide = clone(currentSlide)
             actualCurrentLineId = clone(currentLineId)
@@ -309,17 +311,17 @@
 >
     <!-- always show style background (behind other backgrounds) -->
     {#if styleBackground && actualSlide?.type !== "pdf"}
-        <Background data={styleBackgroundData} {outputId} transition={transitions.media} {currentStyle} {slideFilter} {ratio} {isKeyOutput} animationStyle={animationData.style?.background || ""} mirror styleBackground />
+        <Background data={styleBackgroundData} {outputId} transition={transitions.media} {currentStyle} {slideFilter} {ratio} animationStyle={animationData.style?.background || ""} mirror styleBackground />
     {/if}
 
     <!-- background -->
     {#if (layers.includes("background") || backgroundData?.ignoreLayer) && backgroundData}
-        <Background data={backgroundData} {outputId} transition={transitions.media} {currentStyle} {slideFilter} {ratio} {isKeyOutput} animationStyle={animationData.style?.background || ""} mirror={isKeyOutput || mirror} />
+        <Background data={backgroundData} {outputId} transition={transitions.media} {currentStyle} {slideFilter} {ratio} animationStyle={animationData.style?.background || ""} {mirror} />
     {/if}
 
     <!-- colorbars for testing -->
-    {#if $colorbars}
-        <Image path="./assets/{$colorbars}" mediaStyle={{ rendering: "pixelated", fit: "fill" }} />
+    {#if $colorbars[outputId]}
+        <Image path="./assets/{$colorbars[outputId]}" mediaStyle={{ rendering: "pixelated", fit: "fill" }} />
     {/if}
 
     <!-- effects -->
@@ -330,7 +332,7 @@
     <!-- "underlays" -->
     {#if overlaysActive}
         <!-- && outUnderlays?.length -->
-        <Overlays {outputId} overlays={clonedOverlays} activeOverlays={outUnderlays} transition={transitions.overlay} {isKeyOutput} {mirror} {preview} />
+        <Overlays {outputId} overlays={clonedOverlays} activeOverlays={outUnderlays} transition={transitions.overlay} {mirror} {preview} />
     {/if}
 
     <!-- slide -->
@@ -344,7 +346,7 @@
                 <Window id={actualSlide?.screen?.id} class="media" style="width: 100%;height: 100%;" />
             {/if}
         </span>
-    {:else if actualSlide && actualSlide?.type !== "pdf" && layers.includes("slide")}
+    {:else if actualSlide && actualSlide?.type !== "pdf"}
         <SlideContent
             {outputId}
             outSlide={actualSlide}
@@ -360,7 +362,6 @@
             {preview}
             transition={transitions.text}
             transitionEnabled={!mirror || preview}
-            {isKeyOutput}
             {styleIdOverride}
         />
     {/if}
@@ -372,14 +373,13 @@
                 value={messageText.includes("{") ? replaceDynamicValues(messageText, { showId: actualSlide?.id, layoutId: actualSlide?.layout, slideIndex: actualSlide?.index }, updateDynamic) : messageText}
                 style={metadata.messageStyle || ""}
                 transition={metadata.messageTransition || transitions.overlay}
-                {isKeyOutput}
             />
         {/if}
 
         <!-- metadata -->
         {#if metadataValue || ((layers.includes("background") || backgroundData?.ignoreLayer) && $customMessageCredits)}
             <!-- value={metadata.value ? (metadata.value.includes("{") ? createMetadataLayout(metadata.value, { showId: actualSlide?.id, layoutId: actualSlide?.layout, slideIndex: actualSlide?.index }, updateDynamic) : metadata.value) : $customMessageCredits || ""} -->
-            <Metadata value={metadata.value || $customMessageCredits || ""} style={metadata.style || ""} conditions={metadata.condition} isClearing={isSlideClearing} {outputId} transition={metadata.transition || transitions.overlay} {isKeyOutput} />
+            <Metadata value={metadata.value || $customMessageCredits || ""} style={metadata.style || ""} conditions={metadata.condition} isClearing={isSlideClearing} {outputId} transition={metadata.transition || transitions.overlay} />
         {/if}
 
         <!-- effects -->
@@ -390,7 +390,7 @@
         <!-- overlays -->
         <!-- outOverlays?.length -->
         {#if overlaysActive}
-            <Overlays {outputId} overlays={clonedOverlays} activeOverlays={outOverlays} transition={transitions.overlay} {isKeyOutput} {mirror} {preview} />
+            <Overlays {outputId} overlays={clonedOverlays} activeOverlays={outOverlays} transition={transitions.overlay} {mirror} {preview} />
         {/if}
     {/if}
 
@@ -403,7 +403,7 @@
     {/if}
 
     <!-- draw -->
-    {#if currentOutput.active || (mirror && !preview)}
+    {#if zoomActive}
         <Draw />
     {/if}
 </Zoomed>
@@ -412,7 +412,7 @@
     .attributionString {
         position: absolute;
         bottom: 15px;
-        inset-inline-start: 50%;
+        left: 50%;
         transform: translateX(-50%);
 
         font-size: 28px;

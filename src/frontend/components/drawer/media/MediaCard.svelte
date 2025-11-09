@@ -1,8 +1,9 @@
 <script lang="ts">
+    import { derived } from "svelte/store"
     import type { MediaStyle } from "../../../../types/Main"
     import type { ShowType } from "../../../../types/Show"
-    import { activeShow, customMessageCredits, dictionary, media, mediaOptions, mediaTags, outLocked, outputs, photoApiCredits, special, styles } from "../../../stores"
-    import { derived } from "svelte/store"
+    import { activeShow, customMessageCredits, media, mediaOptions, mediaTags, outLocked, outputs, photoApiCredits, special, styles } from "../../../stores"
+    import { translateText } from "../../../utils/language"
     import { getKey } from "../../../values/keys"
     import Icon from "../../helpers/Icon.svelte"
     import { getMediaStyle } from "../../helpers/media"
@@ -21,11 +22,13 @@
     export let shiftRange: any[] = []
     export let thumbnailPath = ""
     export let thumbnail = true
+    export let contentProvider = false
 
     // Memoized name computation
     let displayName = ""
     $: {
-        const newName = name.slice(0, name.lastIndexOf("."))
+        const dotIndex = name.lastIndexOf(".")
+        const newName = dotIndex > 0 ? name.slice(0, dotIndex) : name
         if (displayName !== newName) {
             displayName = newName
         }
@@ -111,7 +114,7 @@
         }
 
         let videoType = mediaStyle.videoType || ""
-        let loop = videoType === "foreground" ? false : true
+        let loop = contentProvider || videoType === "foreground" ? false : true
         let muted = videoType === "background" ? true : false
         if (videoType === "foreground") clearSlide()
 
@@ -215,7 +218,7 @@
             {#if isFavourite && active !== "favourites"}
                 <div style="max-width: 100%;">
                     <div class="button">
-                        <Button style="padding: 3px;" redHover title={$dictionary.actions?.remove} on:click={() => removeStyle("favourite")}>
+                        <Button style="padding: 3px;" redHover title={translateText("actions.remove")} on:click={() => removeStyle("favourite")}>
                             <Icon id="star" size={0.9} white />
                         </Button>
                     </div>
@@ -224,7 +227,7 @@
             {#if mediaStyle.videoType}
                 <div style="max-width: 100%;">
                     <div class="button">
-                        <Button style="padding: 3px;" redHover title={$dictionary.actions?.remove} on:click={() => removeStyle("videoType")}>
+                        <Button style="padding: 3px;" redHover title={translateText("actions.remove")} on:click={() => removeStyle("videoType")}>
                             <Icon id={mediaStyle.videoType === "background" ? "muted" : mediaStyle.videoType === "foreground" ? "volume" : ""} size={0.9} white />
                         </Button>
                     </div>
@@ -233,7 +236,7 @@
             {#if !!mediaStyle.filter?.length || $media[path]?.fit || mediaStyle.flipped || mediaStyle.flippedY || Object.keys(mediaStyle.cropping || {}).length}
                 <div style="max-width: 100%;">
                     <div class="button">
-                        <Button style="padding: 3px;" redHover title={$dictionary.actions?.remove} on:click={() => removeStyle("filters")}>
+                        <Button style="padding: 3px;" redHover title={translateText("actions.remove")} on:click={() => removeStyle("filters")}>
                             <Icon id="filter" size={0.9} white />
                         </Button>
                     </div>
@@ -242,7 +245,7 @@
             {#if tags.length}
                 <div style="max-width: 100%;">
                     <div class="button">
-                        <Button style="padding: 3px;" redHover title={$dictionary.actions?.remove} on:click={() => removeStyle("tags")}>
+                        <Button style="padding: 3px;" redHover title={translateText("actions.remove")} on:click={() => removeStyle("tags")}>
                             <Icon id="tag" size={0.9} white />
                         </Button>
                     </div>
@@ -283,7 +286,7 @@
         display: flex;
         flex-direction: column;
         position: absolute;
-        inset-inline-start: 0;
+        left: 0;
         z-index: 1;
         font-size: 0.9em;
 

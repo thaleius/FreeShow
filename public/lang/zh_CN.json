@@ -137,7 +137,6 @@
         "_hide_preview": "隐藏预览窗口",
         "show_preview": "显示预览窗口",
         "restore_output": "恢复输出",
-        "enable_controls": "显示媒体预览控件",
         "background": "背景",
         "foreground": "前景",
         "slide": "幻灯片",
@@ -147,7 +146,8 @@
         "nextTimer": "下一张幻灯片计时器",
         "lock": "锁上",
         "unlock": "解锁",
-        "test_pattern": "测试模式"
+        "test_pattern": "测试模式",
+        "live_prepare": "隐藏输出内容（黑色蒙层）"
     },
     "clear": {
         "general": "清除",
@@ -219,6 +219,9 @@
         "allow_gaining_tip": "允许将音量设置超过100%（可能导致失真）",
         "pre_fader_volume_meter": "推子前音量表",
         "mixer": "调音台",
+        "equalizer": "均衡器",
+        "preset": "预设",
+        "main": "主输出",
         "metronome": "节拍器",
         "toggle_metronome": "显示/隐藏节拍器",
         "use_metadata_bpm": "使用元数据中的 BPM",
@@ -288,6 +291,7 @@
         "no_show": "找不到节目",
         "no_layouts": "找不到任何布局",
         "load": "无法加载",
+        "media": "找不到媒体",
         "bible": "找不到本地圣经",
         "import": "无法导入",
         "bible_api": "无法从 API.Bible 获取经文，请检查您的网络连接。",
@@ -346,7 +350,6 @@
         "textInvert": "反转文字",
         "secondary-text": "选项",
         "secondary": "辅助色",
-        "secondary-opacity": "辅助透明度",
         "hover": "悬浮",
         "focus": "聚焦"
     },
@@ -468,7 +471,9 @@
         "manage_emitters": "管理发射器",
         "action": "动作",
         "category_action": "分类动作",
+        "category_template": "分类模板",
         "custom_action": "自定义动作",
+        "slide_midi": "幻灯片 MIDI 输入",
         "user_data_overwrite": "发现已有数据",
         "connect": "连接",
         "cloud_update": "与云端同步",
@@ -482,7 +487,7 @@
         "manage_dynamic_values": "管理动态值",
         "choose_camera": "选择相机",
         "manage_tags": "管理标签",
-        "chums_sync_categories": "选择要同步的分类",
+        "sync_categories": "选择要同步的分类",
         "effect_items": "效果元素",
         "initialize": "欢迎使用 FreeShow",
         "unsaved": "您确定要退出吗？",
@@ -649,7 +654,7 @@
         "mode": "模式",
         "increment": "增加",
         "decrement": "减少",
-        "expression": "Expression",
+        "expression": "表达式",
         "manage_subtitles": "管理字幕",
         "toggle_time_marker": "切换时间标记",
         "add_time_marker": "添加时间标记",
@@ -732,7 +737,6 @@
         "next_after_media": "媒体播放完成后下一个",
         "remove_media": "移除媒体",
         "remove_layers": "移除图层",
-        "toggle_checkbox_tip": "如果复选框未更改，动作将切换",
         "start_recording": "开始录制",
         "stop_recording": "停止录制",
         "export_recording": "停止录制并导出",
@@ -755,6 +759,7 @@
         "start_screen": "开始屏幕",
         "id_start_effect": "启动效果",
         "id_select_overlay": "启动叠加",
+        "toggle_playing_media": "切换正在播放的媒体",
         "change_volume": "修改音量",
         "start_audio_stream": "开始音频流",
         "start_playlist": "启动播放列表",
@@ -768,6 +773,7 @@
         "change_transition": "修改转场动画",
         "change_variable": "修改变量",
         "start_trigger": "启动触发器",
+        "change_draw_zoom": "更改视图缩放​",
         "run_action": "运行动作",
         "toggle_action": "切换动作",
         "emit_data": "发出数据",
@@ -779,6 +785,7 @@
         "activate_on_startup": "启动时激活",
         "activate_save": "保存时激活",
         "activate_slide_clicked": "单击幻灯片时激活",
+        "activate_group_start": "当分组启动时激活",
         "activate_video_starting": "视频开始时激活",
         "activate_video_ending": "视频结束时激活",
         "activate_audio_starting": "音频播放开始时激活",
@@ -794,9 +801,6 @@
     },
     "conditions": {
         "show_item": "显示项目如果",
-        "all_conditions": "满足以下所有条件",
-        "some_conditions": "满足以下部分条件",
-        "none_conditions": "未满足以下任何条件​",
         "has": "有",
         "has_not": "没有",
         "is": "是",
@@ -945,6 +949,7 @@
         "max_lines_per_slide": "单幻灯片最大行数",
         "break_long_lines": "长句换行",
         "break_long_lines_tip": "超过设定字数时换行",
+        "skip_virtual_breaks": "忽略虚拟换行符",
         "media_fit": "媒体适应",
         "cropping": "裁剪",
         "one_letter": "单字母模式",
@@ -958,6 +963,7 @@
         "invert_items": "反转元素",
         "list": "列表",
         "chords": "合弦",
+        "insert_virtual_break": "插入虚拟换行符",
         "vertical_offset": "垂直偏移",
         "transpose": "转调",
         "transpose_up": "向上转调",
@@ -1043,7 +1049,9 @@
         "longitude": "经度",
         "altitude": "高度",
         "fahrenheit": "华氏度",
-        "longRange": "长距离"
+        "longRange": "长距离",
+        "media_item_tip": "您想将该媒体用作背景吗？",
+        "convert_to_background": "转化为背景"
     },
     "items": {
         "text": "文本框",
@@ -1064,11 +1072,12 @@
         "slide_tracker": "进度",
         "visualizer": "可视化",
         "captions": "字幕",
+        "metronome": "节拍器",
         "icon": "图标",
         "effect": "效果",
         "slide_text": "幻灯片文本",
         "slide_notes": "幻灯片备注",
-        "current_output": "当前输出"
+        "current_output": "输出窗口"
     },
     "borders": {
         "solid": "实线",
@@ -1108,7 +1117,7 @@
         "overflow": "结束时允许超时",
         "overflow_color": "超时颜色",
         "overflow_blink": "溢出时闪烁",
-        "overflow_blink_offset": "Start blinking early",
+        "overflow_blink_offset": "提前开始闪烁",
         "preview": "预览",
         "clock": "时间",
         "event": "事件",
@@ -1175,9 +1184,6 @@
         "fill": "填充",
         "paint": "油漆",
         "particles": "粒子",
-        "color": "颜色",
-        "opacity": "透明度",
-        "size": "大小",
         "radius": "半径",
         "glow": "发光",
         "hollow": "空心",
@@ -1253,12 +1259,14 @@
         "window": "窗口",
         "active_style": "使用样式",
         "alert_updates": "有新版本时提醒我",
+        "alert_updates_beta": "有新的测试版时提醒我",
         "auto_updates": "自动更新",
         "disable_labels": "禁用标签",
         "group_numbers": "分组编号",
         "auto_group_numbers": "自动分配分组编号",
         "transparent_slides": "透明幻灯片预览",
         "full_colors": "高对比度分组颜色",
+        "next_item_on_last_slide": "左/右箭头可在首张/末张幻灯片上切换项目项",
         "slide_number_keys": "使用数字键播放幻灯片",
         "auto_shortcut_first_letter": "文本中首字母的自动快捷键",
         "startup_projects_list": "启动时显示项目列表",
@@ -1294,6 +1302,7 @@
         "user_data_exists": "在自定义位置发现已有数据，是否要覆盖它？",
         "user_data_yes": "是，保留当前数据",
         "user_data_no": "否，导入已有数据",
+        "auto_locate_missing_media_files": "自动定位丢失的媒体文件",
         "popup_before_close": "关闭时显示确认弹窗",
         "disable_hardware_acceleration": "禁用硬件加速",
         "restart_for_change": "您必须重启程序才能使修改生效！",
@@ -1339,6 +1348,10 @@
         "section_trigger_action": "导航到演示文稿的某个部分时触发操作",
         "rss": "RSS"
     },
+    "output": {
+        "state_inactive": "不活跃",
+        "state_locked": "已锁定"
+    },
     "profile": {
         "profiles_hint": "创建多角色配置以限制特定用户对程序选定部分的控制/编辑权限",
         "admin": "管理员",
@@ -1362,6 +1375,7 @@
     "calendar": {
         "type": "类型",
         "event": "事件",
+        "first_day": "一周的第一天",
         "schedule_action": "计划动作",
         "name": "名称",
         "color": "颜色",
@@ -1483,7 +1497,7 @@
         "number": "数字",
         "random_number": "随机数",
         "text": "文本",
-        "text_set": "Text set",
+        "text_set": "文本组",
         "step": "步骤",
         "default_value": "默认值",
         "value": "值",
@@ -1491,7 +1505,7 @@
         "set_state": "设置状态",
         "minimum": "最小值",
         "maximum": "最大值",
-        "add_set": "Add set"
+        "add_set": "添加组"
     },
     "month": {
         "1": "一月",
@@ -1600,12 +1614,8 @@
         "end": "如需了解其他功能，欢迎随时上网查阅帮助文档。"
     },
     "songbeamer_import": {
-        "options": "选项",
         "encoding": "编码",
         "older_versions": "适用于 6.02a 之前的 Songbeamer 版本",
-        "category": "分类",
-        "utf8": "UTF-8",
-        "latin1": "Latin 1",
         "translations": "翻译",
         "translation_multiline": "多行",
         "translation_textboxes": "文本框",
@@ -1613,9 +1623,5 @@
         "translation_description_multiline": "在同一个文本框内交替显示所有语言（类似 Songbeamer）。",
         "translation_description_textboxes": "将每种语言作为单独的文本框添加到幻灯片中。",
         "translation_description_layouts": "为每种语言创建一组独特的幻灯片和布局。"
-    },
-    "chums": {
-        "sync_categories": "同步分类",
-        "sync_categories_description": "选择要与 Chums 同步为歌曲的类别"
     }
 }

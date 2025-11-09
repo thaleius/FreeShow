@@ -4,13 +4,12 @@
     import { getAccess } from "../../utils/profile"
     import { getItemKeys } from "../edit/scripts/itemClipboard"
     import { addStyleString } from "../edit/scripts/textStyle"
-    import { boxes } from "../edit/values/boxes"
+    import { itemBoxes } from "../edit/values/boxes"
     import { history } from "../helpers/history"
-    import Icon from "../helpers/Icon.svelte"
     import { getStageOutputId, getStageResolution } from "../helpers/output"
     import { getStyles } from "../helpers/style"
-    import T from "../helpers/T.svelte"
-    import Button from "../inputs/Button.svelte"
+    import FloatingInputs from "../input/FloatingInputs.svelte"
+    import MaterialButton from "../inputs/MaterialButton.svelte"
     import Tabs from "../main/Tabs.svelte"
     import BoxStyle from "./tools/BoxStyle.svelte"
     import Items from "./tools/Items.svelte"
@@ -36,13 +35,13 @@
 
     let active: string = selectedItemIds.length ? "item" : "items"
     $: type = item?.type || "text"
-    $: if (type === "slide_text" || type === "slide_notes" || type === "current_output") type = "text"
+    $: if (type === "slide_text" || type === "slide_notes") type = "text"
     $: tabs.text.name = "items." + type
-    $: tabs.text.icon = boxes[type]?.icon || "text"
+    $: tabs.text.icon = itemBoxes[type]?.icon || "text"
 
     $: if (item !== undefined) updateTabs()
     function updateTabs() {
-        if (item?.type === "current_output") {
+        if (item?.type === "metronome") {
             tabs.text.disabled = true
             if (active === "text") active = "items"
             return
@@ -196,14 +195,11 @@
             </div>
         {/if}
 
-        <span style="display: flex;flex-wrap: wrap;white-space: nowrap;">
-            {#if active !== "items"}
-                <Button style="flex: 1;" on:click={resetStageStyle} dark center>
-                    <Icon id="reset" right />
-                    <T id={"actions.reset"} />
-                </Button>
-            {/if}
-        </span>
+        {#if active !== "items"}
+            <FloatingInputs>
+                <MaterialButton icon="reset" title="actions.reset" on:click={resetStageStyle} />
+            </FloatingInputs>
+        {/if}
     {/if}
 </div>
 
@@ -219,6 +215,8 @@
         height: 100%;
         overflow-y: auto;
         overflow-x: hidden;
+
+        padding-bottom: 50px;
     }
     .content :global(section) {
         padding: 10px;

@@ -1,7 +1,8 @@
 <script lang="ts">
     import { uid } from "uid"
     import type { AspectRatio, Resolution, Styles } from "../../../../types/Settings"
-    import { activeDrawerTab, activeEdit, activePage, activeStyle, dictionary, outputs, styles, templates } from "../../../stores"
+    import { activeDrawerTab, activeEdit, activePage, activeStyle, outputs, styles, templates } from "../../../stores"
+    import { translateText } from "../../../utils/language"
     import { transitionTypes } from "../../../utils/transitions"
     import { mediaExtensions } from "../../../values/extensions"
     import { mediaFitOptions } from "../../edit/values/boxes"
@@ -14,6 +15,7 @@
     import MaterialButton from "../../inputs/MaterialButton.svelte"
     import MaterialColorInput from "../../inputs/MaterialColorInput.svelte"
     import MaterialFilePicker from "../../inputs/MaterialFilePicker.svelte"
+    import MaterialNumberInput from "../../inputs/MaterialNumberInput.svelte"
     import MaterialPopupButton from "../../inputs/MaterialPopupButton.svelte"
     import MaterialTextInput from "../../inputs/MaterialTextInput.svelte"
     import MaterialToggleButtons from "../../inputs/MaterialToggleButtons.svelte"
@@ -56,7 +58,7 @@
     }
 
     const defaultStyle: Styles = {
-        name: $dictionary.example?.default || "Default"
+        name: translateText("example.default")
     }
 
     // set id after deletion
@@ -102,7 +104,7 @@
     }
 
     $: transitionLabel = textTransitionData?.name || ""
-    $: mediaFitLabel = mediaFitOptions.find((a) => a.id === mediaFit)?.name || ""
+    $: mediaFitLabel = mediaFitOptions.find((a) => a.value === mediaFit)?.label || ""
     $: aspectRatioLabel = aspectRatio.outputResolutionAsRatio ? "settings.output_resolution_ratio" : `${aspectRatio.width}:${aspectRatio.height}`
 
     const layerOptions = [
@@ -152,6 +154,10 @@
     $: metadataDividerValue = currentStyle.metadataDivider === undefined ? defaultDivider : currentStyle.metadataDivider
     $: metadataTemplate = currentStyle.metadataTemplate || "metadata"
     $: messageTemplate = currentStyle.messageTemplate || "message"
+
+    function updateCustom(e: any) {
+        updateStyle(e.value, e.key)
+    }
 </script>
 
 <MaterialColorInput
@@ -178,15 +184,21 @@
 {/if}
 
 <MaterialPopupButton label="popup.transition" id="style" value={currentStyle.transition} name={transitionLabel} popupId="transition" icon="transition" on:change={(e) => updateStyle(e.detail || "", "transition")} allowEmpty />
-<MaterialPopupButton label="edit.media_fit" value={mediaFit} defaultValue="contain" name={mediaFitLabel} popupId="media_fit" icon="media_fit" on:change={(e) => updateStyle(e.detail, "fit")} />
+<MaterialPopupButton label="edit.media_fit" value={mediaFit} defaultValue="contain" name={mediaFitLabel} popupId="media_fit" icon="media_fit" data={{ updateCustom, styleId }} on:change={(e) => updateStyle(e.detail, "fit")} />
 <MaterialPopupButton label="settings.aspect_ratio" value={aspectRatio} defaultValue={defaultAspectRatio} name={aspectRatioLabel} popupId="aspect_ratio" icon="aspect_ratio" on:change={(e) => updateStyle(e.detail, "aspectRatio")} />
 
 <MaterialToggleButtons label="settings.active_layers" value={activeLayers} options={layerOptions} on:change={(e) => updateStyle(e.detail, "layers")} />
 <!-- WIP toggle meta -->
 
+<!-- Background -->
+<Title label="preview.background" icon="background" />
+
+<MaterialNumberInput label="media.volume (%)" disabled={!activeLayers.includes("background")} value={currentStyle.volume ?? 100} defaultValue={100} max={100} on:change={(e) => updateStyle(e.detail, "volume")} />
+
+<!-- Slide -->
 <Title label="preview.slide" icon="slide" />
 
-<MaterialPopupButton label="settings.lines" disabled={!activeLayers.includes("slide")} value={maxLines} name={maxLines.toString()} popupId="max_lines" icon="lines" on:change={(e) => updateStyle(e.detail, "lines")} allowEmpty />
+<MaterialPopupButton label="settings.lines" disabled={!activeLayers.includes("slide")} value={maxLines} name={maxLines.toString()} popupId="max_lines" icon="lines" data={{ styleId }} on:change={(e) => updateStyle(e.detail, "lines")} allowEmpty />
 
 <InputRow>
     <!-- WIP doubleClick ?? -->
@@ -222,8 +234,8 @@
     {/if}
 </InputRow>
 
-<!-- overlays -->
-<Title label="tools.metadata" icon="info" />
+<!-- Overlays -->
+<Title label="preview.overlays (tools.metadata)" icon="overlays" />
 
 <MaterialPopupButton
     label="meta.display_metadata"

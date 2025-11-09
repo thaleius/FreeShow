@@ -2,6 +2,7 @@
     import { onDestroy } from "svelte"
     import { uid } from "uid"
     import { Main } from "../../../../types/IPC/Main"
+    import type { ClickEvent } from "../../../../types/Main"
     import { destroyMain, receiveMain, sendMain } from "../../../IPC/main"
     import { AudioPlaylist } from "../../../audio/audioPlaylist"
     import { activePlaylist, activePopup, activeRename, audioFolders, audioPlaylists, drawerTabsData, effectsLibrary, labelsDisabled, media, outLocked, selectAllAudio, selected } from "../../../stores"
@@ -12,9 +13,8 @@
     import { splitPath } from "../../helpers/get"
     import { getFileName, getMediaType } from "../../helpers/media"
     import FloatingInputs from "../../input/FloatingInputs.svelte"
-    import CombinedInput from "../../inputs/CombinedInput.svelte"
     import MaterialButton from "../../inputs/MaterialButton.svelte"
-    import NumberInput from "../../inputs/NumberInput.svelte"
+    import MaterialNumberInput from "../../inputs/MaterialNumberInput.svelte"
     import Center from "../../system/Center.svelte"
     import DropArea from "../../system/DropArea.svelte"
     import AudioStreams from "../live/AudioStreams.svelte"
@@ -22,6 +22,7 @@
     import Folder from "../media/Folder.svelte"
     import AudioEffect from "./AudioEffect.svelte"
     import AudioFile from "./AudioFile.svelte"
+    import Metronome from "./Metronome.svelte"
 
     export let active: string | null
     export let searchValue = ""
@@ -35,7 +36,7 @@
 
     $: playlist = active && $audioPlaylists[active]
 
-    $: isDefault = ["all", "favourites", "effects_library", "microphones", "audio_streams"].includes(active || "")
+    $: isDefault = ["all", "favourites", "effects_library", "microphones", "audio_streams", "metronome"].includes(active || "")
     $: rootPath = isDefault || playlist ? "" : active !== null ? $audioFolders[active]?.path || "" : ""
     $: path = isDefault || playlist ? "" : rootPath
     $: name =
@@ -46,7 +47,7 @@
               : active === "effects_library"
                 ? "category.sound_effects"
                 : rootPath === path
-                  ? active !== "microphones" && active !== "audio_streams" && active !== null
+                  ? active !== "microphones" && active !== "audio_streams" && active !== "metronome" && active !== null
                       ? $audioFolders[active]?.name || ""
                       : ""
                   : splitPath(path).name
@@ -84,7 +85,7 @@
                 sendMain(Main.READ_FOLDER, { path, listFilesInFolders: true, disableThumbnails: true })
             }
         } else {
-            // microphones & audio_streams
+            // microphones & audio_streams & metronome
             prevActive = active
         }
     }
@@ -149,7 +150,7 @@
     function goBack() {
         const lastSlash = path.lastIndexOf("\\") > -1 ? path.lastIndexOf("\\") : path.lastIndexOf("/")
         const folder = path.slice(0, lastSlash)
-        path = folder.length > rootPath.length ? folder : rootPath
+        path = folder.length > rootPath.length ? folder || rootPath : rootPath
     }
 
     // selected will be cleared when clicked, so store them on mousedown
@@ -159,12 +160,12 @@
         else selectedFiles = []
     }
 
-    function createPlaylist(e) {
+    function createPlaylist(e: ClickEvent) {
         let playlistName = ""
         let files = fullFilteredFiles.filter((a) => !a.folder)
         if (selectedFiles.length) files = selectedFiles
 
-        if (e.ctrlKey || e.metaKey) {
+        if (e.detail.ctrl) {
             files = []
         } else if (!isDefault) {
             playlistName = name
@@ -210,22 +211,19 @@
 
 <svelte:window on:keydown={keydown} />
 
-<div class="scroll" style="flex: 1;overflow-y: auto;" bind:this={scrollElem}>
-    <div class="grid" style="height: 100%;">
+<div class="scroll" style="flex: 1;overflow-y: auto;" class:full={active === "audio_streams" || active === "effects_library"} bind:this={scrollElem}>
+    <div class="grid" style={active !== "audio_streams" && active !== "effects_library" && (playlist ? playlist.songs.length : fullFilteredFiles.length) ? "" : "height: 100%;"}>
         {#if active === "microphones"}
             <Microphones />
         {:else if active === "audio_streams"}
             <AudioStreams />
+        {:else if active === "metronome"}
+            <Metronome />
         {:else if playlist && playlistSettings}
-            <CombinedInput>
-                <p><T id="settings.audio_crossfade" /></p>
-                <NumberInput value={playlist?.crossfade || 0} max={30} step={0.5} decimals={1} fixed={1} on:change={(e) => AudioPlaylist.update(active || "", "crossfade", e.detail)} />
-            </CombinedInput>
-
-            <CombinedInput>
-                <p><T id="settings.playlist_volume" /></p>
-                <NumberInput value={playlist?.volume || 1} min={0.01} max={1} decimals={2} step={0.01} inputMultiplier={100} on:change={(e) => AudioPlaylist.update(active || "", "volume", e.detail)} />
-            </CombinedInput>
+            <div class="settings">
+                <MaterialNumberInput label="settings.audio_crossfade (s)" value={playlist?.crossfade || 0} max={30} step={0.5} on:change={(e) => AudioPlaylist.update(active || "", "crossfade", e.detail)} />
+                <MaterialNumberInput label="settings.playlist_volume (%)" value={Number(((playlist?.volume || 1) * 100).toFixed(2))} min={1} max={100} on:change={(e) => AudioPlaylist.update(active || "", "volume", e.detail / 100)} />
+            </div>
 
             <!-- <CombinedInput>
                 <p><T id="settings.custom_audio_output" /></p>
@@ -254,7 +252,7 @@
                 {#key path}
                     {#each fullFilteredFiles as file}
                         {#if file.folder}
-                            <Folder bind:rootPath={path} name={file.name} path={file.path} mode="list" />
+                            <Folder name={file.name} path={file.path} mode="list" on:open={(e) => (path = e.detail)} />
                         {:else}
                             <AudioFile path={file.path} name={file.name} {active} />
                         {/if}
@@ -269,7 +267,7 @@
     </div>
 </div>
 
-{#if active === "microphones" || active === "effects_library"}
+{#if active === "microphones" || active === "effects_library" || active === "metronome"}
     <!-- nothing -->
 {:else if active === "audio_streams"}
     <FloatingInputs onlyOne>
@@ -287,7 +285,7 @@
                 $activePlaylist?.id === active ? AudioPlaylist.stop() : AudioPlaylist.start(active || "")
             }}
         >
-            <Icon size={1.3} id={$activePlaylist?.id === active ? "stop" : "play"} white={$activePlaylist?.id === active} />
+            <Icon size={1.3} id={$activePlaylist?.id === active ? "stop" : "play"} white={$activePlaylist?.id !== active} />
         </MaterialButton>
 
         <div class="divider" />
@@ -354,6 +352,13 @@
 {/if}
 
 <style>
+    .scroll {
+        padding-bottom: 60px;
+    }
+    .scroll.full {
+        padding-bottom: 0;
+    }
+
     .grid {
         display: flex;
         flex-direction: column;
@@ -373,6 +378,16 @@
     }
     .grid :global(.selectElem:not(.isSelected):nth-child(even)) {
         background-color: rgb(0 0 20 / 0.08);
+    }
+
+    .settings {
+        margin: 15px;
+        padding: 10px;
+
+        border: 1px solid var(--primary-lighter);
+
+        border-radius: 8px;
+        overflow: hidden;
     }
 
     .effects {

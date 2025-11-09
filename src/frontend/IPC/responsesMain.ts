@@ -7,7 +7,7 @@ import { API_ACTIONS, triggerAction } from "../components/actions/api"
 import { receivedMidi } from "../components/actions/midi"
 import { menuClick } from "../components/context/menuClick"
 import { getCurrentTimerValue } from "../components/drawer/timers/timers"
-import { getDynamicValue, _getVariableValue } from "../components/edit/scripts/itemHelpers"
+import { _getVariableValue, getDynamicValue } from "../components/edit/scripts/itemHelpers"
 import { getSlidesText } from "../components/edit/scripts/textStyle"
 import { clone, keysToID } from "../components/helpers/array"
 import { addDrawerFolder } from "../components/helpers/dropActions"
@@ -48,10 +48,9 @@ import {
     activeTimers,
     alertMessage,
     audioData,
-    chumsConnected,
+    contentProviderData,
     currentOutputSettings,
     dataPath,
-    dictionary,
     driveKeys,
     events,
     folders,
@@ -59,12 +58,12 @@ import {
     media,
     outputs,
     overlays,
-    pcoConnected,
     popupData,
     presentationData,
     projects,
     projectTemplates,
     projectView,
+    providerConnections,
     redoHistory,
     shows,
     showsCache,
@@ -111,7 +110,16 @@ export const mainResponses: MainResponses = {
     },
     [Main.STAGE_SHOWS]: (a) => stageShows.set(a),
     [Main.PROJECTS]: (a) => {
-        projects.set(a.projects || {})
+        const projectsList = a.projects || {}
+
+        // remove "Mark as played" on startup
+        Object.values(projectsList).forEach((project) => {
+            project?.shows?.forEach((item) => {
+                delete item.played
+            })
+        })
+
+        projects.set(projectsList)
         folders.set(a.folders || {})
         projectTemplates.set(a.projectTemplates || {})
     },
@@ -159,7 +167,7 @@ export const mainResponses: MainResponses = {
     [ToMain.RECEIVE_MIDI2]: (a) => receivedMidi(a),
     [Main.DELETE_SHOWS]: (a) => {
         if (!a.deleted.length) {
-            newToast("$toast.delete_shows_empty")
+            newToast("toast.delete_shows_empty")
             return
         }
 
@@ -180,14 +188,14 @@ export const mainResponses: MainResponses = {
         if (!finished) return activePopup.set(null)
 
         console.info("Backed up to:", path)
-        newToast(get(dictionary).settings?.backup_finished || "") // + ": " + path)
+        newToast("settings.backup_finished") // + ": " + path)
     },
     [ToMain.RESTORE2]: ({ finished, starting }) => {
         if (!finished) {
             if (get(activePopup) !== "initialize") activePopup.set(null)
             return
         }
-        if (starting) return newToast("$settings.restore_started")
+        if (starting) return newToast("settings.restore_started")
 
         // close opened
         activeEdit.set({ items: [] })
@@ -195,7 +203,7 @@ export const mainResponses: MainResponses = {
         activePage.set("show")
         if (get(activePopup) === "initialize") activePopup.set(null)
 
-        newToast("$settings.restore_finished")
+        newToast("settings.restore_finished")
     },
     [Main.LOCATE_MEDIA_FILE]: (data) => {
         if (!data) return
@@ -216,7 +224,7 @@ export const mainResponses: MainResponses = {
         })
 
         // sometimes when lagging the image will be "replaced" even when it exists
-        if (prevPath !== data.path) newToast("$toast.media_replaced")
+        if (prevPath !== data.path) newToast("toast.media_replaced")
     },
     [Main.MEDIA_TRACKS]: (data) => setMediaTracks(data),
     [ToMain.API_TRIGGER2]: (data) => triggerAction(data),
@@ -243,17 +251,19 @@ export const mainResponses: MainResponses = {
 
         // get "actual" variables
         Object.entries(get(variables)).forEach(([id, a]) => {
+            if (!a.name) return
             variableData[`variable_${getLabelId(a.name, false)}`] = _getVariableValue(id)
         })
 
         // get timers
         Object.entries(get(timers)).forEach(([id, a]) => {
+            if (!a.name) return
             const labelId = getLabelId(a.name, false)
             const currentTime = getCurrentTimerValue(a, { id }, new Date())
             const timeValue = `${currentTime < 0 ? "-" : ""}${joinTimeBig(typeof currentTime === "number" ? currentTime : 0)}`
             variableData[`timer_${labelId}`] = timeValue
             variableData[`timer_${labelId}_seconds`] = currentTime.toString()
-            const activeTimer = get(activeTimers).find((activeTimer) => activeTimer.id === id)
+            const activeTimer = get(activeTimers).find((timer) => timer.id === id)
             let status = "Stopped"
             if (activeTimer) {
                 status = activeTimer.paused ? "Paused" : "Playing"
@@ -270,16 +280,22 @@ export const mainResponses: MainResponses = {
     },
 
     // CONNECTION
-    [ToMain.PCO_CONNECT]: (data) => {
+    // UNIFIED PROVIDER CALLBACKS
+    [ToMain.PROVIDER_CONNECT]: (data) => {
         if (!data.success) return
-        pcoConnected.set(true)
-        if (data.isFirstConnection) newToast("$main.finished")
+
+        providerConnections.update(c => {
+            c[data.providerId] = true
+            return c
+        })
+
+        if (data.isFirstConnection) newToast("main.finished")
     },
-    [ToMain.PCO_PROJECTS]: async (data) => {
+    [ToMain.PROVIDER_PROJECTS]: async (data) => {
         if (!data.projects) return
 
         // CREATE CATEGORY
-        createCategory("Planning Center")
+        createCategory(data.categoryName)
 
         const replaceIds: { [key: string]: string } = {}
         const allShows = keysToID(get(shows))
@@ -292,125 +308,77 @@ export const mainResponses: MainResponses = {
             // TODO: check if name contains scripture reference (and is empty), and load from active scripture
 
             // first find any shows linked to the id
-            const linkedShow = allShows.find(({ quickAccess }) => quickAccess?.pcoLink === id)
+            const linkKey = data.providerId === "planningcenter" ? "pcoLink" : data.providerId === "churchApps" ? "chumsLink" : data.providerId === "amazinglife" ? "alLink" : ""
+            const linkedShow = linkKey && allShows.find(({ quickAccess }) => quickAccess?.[linkKey] === id)
             if (linkedShow) {
                 replaceIds[id] = linkedShow.id
                 continue
             }
 
             // find existing show with same name and ask to replace.
-            const existingShow = allShows.find(({ name }) => name.toLowerCase() === show.name.toLowerCase())
-            // const existingShowHasContent = existingShow && (await loadShows([existingShow.id])) && getSlidesText(get(showsCache)[existingShow.id].slides)
-            if (existingShow) {
-                const useLocal = await confirmCustom(`There is an existing show with the same name: ${existingShow.name}.<br><br>Would you like to use the local version instead of the one from Planning Center?`)
-                if (useLocal) {
-                    replaceIds[id] = existingShow.id
+            if (data.providerId === "planningcenter") {
+                const existingShow = allShows.find(({ name }) => name.toLowerCase() === show.name.toLowerCase())
+                // const existingShowHasContent = existingShow && (await loadShows([existingShow.id])) && getSlidesText(get(showsCache)[existingShow.id].slides)
+                if (existingShow) {
+                    const useLocal = get(contentProviderData).planningcenter?.localAlways ?? await confirmCustom(`There is an existing show with the same name: ${existingShow.name}.<br><br>Would you like to use the local version instead of the one from Planning Center?`)
+                    if (useLocal) {
+                        replaceIds[id] = existingShow.id
 
-                    await loadShows([existingShow.id])
-                    showsCache.update((a) => {
-                        if (!a[existingShow.id].quickAccess) a[existingShow.id].quickAccess = {}
-                        a[existingShow.id].quickAccess.pcoLink = id
-                        return a
-                    })
+                        await loadShows([existingShow.id])
+                        showsCache.update((a) => {
+                            if (!a[existingShow.id].quickAccess) a[existingShow.id].quickAccess = {}
+                            if (linkKey) a[existingShow.id].quickAccess[linkKey] = id
+                            return a
+                        })
 
-                    continue
+                        continue
+                    }
                 }
+            } else {
+                // ChurchApps: replace with existing ChurchApps show, that has the same name (but different ID), if it's without content
+                for (const [showId, currentShow] of Object.entries(get(shows))) {
+                    if (currentShow.name !== show.name || currentShow.origin !== "churchApps") continue
+                    await loadShows([showId])
+
+                    const loadedShow = get(showsCache)[showId]
+                    if (!getSlidesText(loadedShow.slides)) {
+                        replaceIds[show.id] = showId
+                        break
+                    }
+                }
+
+                if (replaceIds[show.id]) continue
             }
 
             // don't add/update if already existing (to not mess up any set styles)
             if (get(shows)[id]) continue
 
             delete show.id
-            tempShows.push({ id, show: { ...show, origin: "pco", name: checkName(show.name, id), quickAccess: { pcoLink: id } } })
+            const origin = data.providerId === "planningcenter" ? "pco" : data.providerId
+            tempShows.push({ id, show: { ...show, origin, name: checkName(show.name, id), quickAccess: { [linkKey]: id } } })
         }
         setTempShows(tempShows)
 
-        data.projects.forEach((pcoProject) => {
+        data.projects.forEach((currentProject) => {
             // CREATE PROJECT FOLDER
-            const folderId = pcoProject.folderId
+            const folderId = currentProject.folderId
             if (folderId && (!get(folders)[folderId] || get(folders)[folderId].deleted)) {
-                history({ id: "UPDATE", newData: { replace: { parent: "/", name: pcoProject.folderName } }, oldData: { id: folderId }, location: { page: "show", id: "project_folder" } })
+                history({ id: "UPDATE", newData: { replace: { parent: "/", name: currentProject.folderName } }, oldData: { id: folderId }, location: { page: "show", id: "project_folder" } })
             }
 
             // CREATE PROJECT
             const project: Project = {
-                name: pcoProject.name,
-                created: pcoProject.created,
+                name: currentProject.name,
+                created: currentProject.created,
                 used: Date.now(), // show on top in last used list
                 parent: folderId || "/",
-                shows: pcoProject.items || []
+                shows: currentProject.items || []
             }
 
             // REPLACE IDS
             project.shows = project.shows.map((a) => ({ ...a, id: replaceIds[a.id] || a.id }))
 
-            const projectId = pcoProject.id
-            history({ id: "UPDATE", newData: { data: project }, oldData: { id: projectId }, location: { page: "show", id: "project" } })
-        })
-
-        // open closest to today
-        activeProject.set(data.projects.sort((a, b) => a.scheduledTo - b.scheduledTo)[0]?.id)
-        projectView.set(false)
-    },
-    // CHUMS CONNECTION
-    [ToMain.CHUMS_CONNECT]: (data) => {
-        if (!data.success) return
-        chumsConnected.set(true)
-        if (data.isFirstConnection) newToast("$main.finished")
-    },
-    [ToMain.CHUMS_PROJECTS]: async (data) => {
-        if (!data.projects) return
-
-        // CREATE CATEGORY
-        createCategory("Chums")
-
-        // CREATE SHOWS
-        const replaceIds: { [key: string]: string } = {}
-        const tempShows: { id: string; show: Show }[] = []
-        for (const show of data.shows) {
-            const id = show.id
-
-            // don't add/update if already existing (to not mess up any set styles)
-            if (get(shows)[id]) continue
-
-            // replace with existing Chums show, that has the same name (but different ID), if it's without content
-            for (const [showId, currentShow] of Object.entries(get(shows))) {
-                if (currentShow.name !== show.name || currentShow.origin !== "chums") continue
-                await loadShows([showId])
-
-                const loadedShow = get(showsCache)[showId]
-                if (!getSlidesText(loadedShow.slides)) {
-                    replaceIds[show.id] = showId
-                    break
-                }
-            }
-
-            if (replaceIds[show.id]) continue
-
-            delete show.id
-            tempShows.push({ id, show: { ...show, origin: "chums", name: checkName(show.name, id) } })
-        }
-        setTempShows(tempShows)
-
-        data.projects.forEach((chumsProject) => {
-            // CREATE PROJECT FOLDER
-            const folderId = chumsProject.folderId
-            if (folderId && (!get(folders)[folderId] || get(folders)[folderId].deleted)) {
-                history({ id: "UPDATE", newData: { replace: { parent: "/", name: chumsProject.folderName } }, oldData: { id: folderId }, location: { page: "show", id: "project_folder" } })
-            }
-
-            // CREATE PROJECT
-            const project: Project = {
-                name: chumsProject.name,
-                created: chumsProject.created,
-                used: Date.now(), // show on top in last used list
-                parent: folderId || "/",
-                shows: chumsProject.items || []
-            }
-
-            project.shows = project.shows.map((a) => ({ ...a, id: replaceIds[a.id] || a.id }))
-
-            const projectId = chumsProject.id
+            const projectId = currentProject.id
             history({ id: "UPDATE", newData: { data: project }, oldData: { id: projectId }, location: { page: "show", id: "project" } })
         })
 
@@ -420,14 +388,10 @@ export const mainResponses: MainResponses = {
     },
     [ToMain.OPEN_FOLDER2]: (a) => {
         const receiveFOLDER = {
-            MEDIA: () => addDrawerFolder(a, "media"),
-            AUDIO: () => addDrawerFolder(a, "audio"),
-            SHOWS: () => showsPath.set(a.path),
-            DATA: () => dataPath.set(a.path),
-            DATA_SHOWS: () => {
-                dataPath.set(a.path)
-                if (a.showsPath) showsPath.set(a.showsPath)
-            }
+            MEDIA: () => addDrawerFolder(a, "media"), // menuClick
+            AUDIO: () => addDrawerFolder(a, "audio"), // menuClick
+            // SHOWS: () => showsPath.set(a.path),
+            // DATA: () => dataPath.set(a.path)
         }
 
         if (!receiveFOLDER[a.channel]) return

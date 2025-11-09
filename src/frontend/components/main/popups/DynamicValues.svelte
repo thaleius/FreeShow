@@ -1,8 +1,8 @@
 <script lang="ts">
     import { onDestroy, onMount } from "svelte"
-    import { activeEdit, activePage, activePopup, activeShow, activeStage, dictionary, overlays, popupData, refreshEditSlide, showsCache, special, stageShows, templates } from "../../../stores"
-    import { formatSearch } from "../../../utils/search"
+    import { activeEdit, activePage, activePopup, activeShow, activeStage, overlays, popupData, refreshEditSlide, showsCache, special, stageShows, templates } from "../../../stores"
     import { triggerClickOnEnterSpace } from "../../../utils/clickable"
+    import { formatSearch } from "../../../utils/search"
     import { clone } from "../../helpers/array"
     import { history } from "../../helpers/history"
     import { getLayoutRef } from "../../helpers/show"
@@ -10,9 +10,9 @@
     import { _show } from "../../helpers/shows"
     import T from "../../helpers/T.svelte"
     import HRule from "../../input/HRule.svelte"
-    import CombinedInput from "../../inputs/CombinedInput.svelte"
-    import TextInput from "../../inputs/TextInput.svelte"
+    import MaterialTextInput from "../../inputs/MaterialTextInput.svelte"
     import Center from "../../system/Center.svelte"
+    import MaterialButton from "../../inputs/MaterialButton.svelte"
 
     const obj = $popupData.obj || {}
     const caret = $popupData.caret || {}
@@ -29,20 +29,21 @@
         const stageHidden = ["slide_text_previous", "slide_text_next"]
         if (isStage) list = list.filter((a) => !stageHidden.includes(a.id))
 
-        let seperatorId = ""
-        const seperators = ["$", "time_", "show_", "slide_text_", "video_", "audio_", "meta_", "timer_", "rss_"]
+        let separatorId = ""
+        // the ones that can have a custom name should be first (to prevent it from overwriting a category)
+        const separators = ["$", "timer_", "meta_", "rss_", "project_", "time_", "show_", "slide_text_", "video_", "audio_"]
 
         let newList: { [key: string]: typeof list } = {}
         list.forEach((value) => {
-            const seperator = seperators.find((a) => value.id.includes(a)) || ""
-            if (seperator && seperatorId !== seperator && seperatorId !== "$") {
-                seperatorId = seperator
-                newList[seperatorId] = []
+            const separator = separators.find((a) => value.id.includes(a)) || ""
+            if (separator && separatorId !== separator && separatorId !== "$" && !newList[separator]?.length) {
+                separatorId = separator
+                newList[separatorId] = []
             }
 
-            if (hidden.includes(seperatorId.slice(0, -1))) return
+            if (hidden.includes(separatorId.slice(0, -1))) return
 
-            newList[seperatorId].push(value)
+            newList[separatorId].push(value)
         })
 
         return newList
@@ -50,6 +51,7 @@
 
     function getTitle(id: string) {
         if (id === "time_") return "timer.time"
+        if (id === "project_") return "guide_title.project"
         if (id === "show_") return "guide_title.show"
         if (id === "slide_text_") return "edit.text"
         if (id === "video_") return "edit.video"
@@ -68,8 +70,8 @@
     let searchValue = ""
     // let previousSearchValue = ""
     let resetInput = false
-    function search(e: any = null) {
-        searchValue = formatSearch((e?.target?.value || "").replaceAll(" ", "_"))
+    function search(value = "") {
+        searchValue = formatSearch(value.replaceAll(" ", "_"))
 
         if (searchValue.length < 2) {
             searchedValues = clone(defaultValues)
@@ -210,11 +212,11 @@
 
 <svelte:window on:keydown={applyValue} />
 
-<CombinedInput style="border-bottom: 2px solid var(--secondary);">
-    {#key resetInput}
-        <TextInput placeholder={$dictionary.main?.search} value="" on:input={search} autofocus />
-    {/key}
-</CombinedInput>
+<MaterialButton class="popup-options" icon="edit" iconSize={1.1} title="create_show.more_options" on:click={() => activePopup.set("manage_dynamic_values")} white />
+
+{#key resetInput}
+    <MaterialTextInput label="main.search" value="" on:input={(e) => search(e.detail)} autofocus />
+{/key}
 
 <div style="position: relative;height: 100%;width: calc(100vw - (var(--navigation-width) + 20px) * 2);overflow-y: auto;">
     {#if Object.values(searchedValues)[0]?.length}
@@ -289,6 +291,8 @@
         justify-content: space-between;
         align-items: center;
         gap: 10px;
+
+        border-radius: 4px;
 
         background-color: var(--primary-darkest);
         padding: 10px;

@@ -5,11 +5,11 @@
     import MaterialButton from "../inputs/MaterialButton.svelte"
 
     export let side: "right" | "left" | "center" = "right"
-    export let onlyOne: boolean = false
-    export let gradient: boolean = false
-    export let round: boolean = false
-    export let arrow: boolean = false
-    export let bottom: number = 10
+    export let onlyOne = false
+    export let gradient = false
+    export let round = false
+    export let arrow = false
+    export let bottom = 10
 
     let open = false
 
@@ -17,6 +17,7 @@
     $: isOptimized = $special.optimizedMode
 </script>
 
+<!-- in:fade={{ duration: 80 }} -->
 <div class="row {side}" class:isOptimized class:light class:onlyOne class:gradient class:round style="bottom: {bottom}px;{$$props.style || ''}" on:mousedown>
     {#if arrow}
         <MaterialButton style={open ? "" : "opacity: 0.6;"} class="expand" title={open ? "actions.close" : "create_show.more_options"} isActive={open} on:click={() => (open = !open)}>
@@ -57,6 +58,8 @@
         /* padding: 0 18px; */
         overflow: hidden;
         z-index: 199; /* over edit items */
+
+        max-width: calc(100% - 22px);
 
         --background: rgba(25, 25, 35, 0.85);
         background-color: var(--background);
@@ -149,15 +152,15 @@
 
         transition: 0.4s filter ease;
     }
-    .row.gradient :global(button:hover),
-    .row.gradient :global(button:not(.isActive):active) {
+    .row.gradient :global(button:not(.isActive):not(:disabled):hover),
+    .row.gradient :global(button:not(.isActive):not(:disabled):active) {
         background:
             linear-gradient(var(--background), var(--background)) padding-box,
             linear-gradient(160deg, #8000f0 0%, #9000f0 10%, #b300f0 20%, #d100db 35%, var(--secondary) 100%) border-box !important;
 
         filter: hue-rotate(15deg);
     }
-    .row.gradient :global(button:not(.isActive):active) {
+    .row.gradient :global(button:not(.isActive):not(:disabled):active) {
         filter: hue-rotate(30deg);
     }
 

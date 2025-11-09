@@ -5,15 +5,15 @@
     import { Option } from "../../../../types/Main"
     import type { Output } from "../../../../types/Output"
     import { AudioAnalyser } from "../../../audio/audioAnalyser"
-    import { activePage, activeStage, activeStyle, currentOutputSettings, dictionary, ndiData, os, outputDisplay, outputs, settingsTab, stageShows, styles, toggleOutputEnabled } from "../../../stores"
+    import { activePage, activeStage, activeStyle, currentOutputSettings, ndiData, os, outputDisplay, outputs, settingsTab, stageShows, styles, toggleOutputEnabled } from "../../../stores"
     import { newToast } from "../../../utils/common"
+    import { translateText } from "../../../utils/language"
     import { destroy, receive, send } from "../../../utils/request"
     import T from "../../helpers/T.svelte"
-    import { keysToID, sortByName, sortObject } from "../../helpers/array"
-    import { getActiveOutputs, refreshOut } from "../../helpers/output"
+    import { clone, keysToID, sortByName, sortObject } from "../../helpers/array"
+    import { refreshOut, toggleOutput } from "../../helpers/output"
     import InputRow from "../../input/InputRow.svelte"
     import Title from "../../input/Title.svelte"
-    import Checkbox from "../../inputs/Checkbox.svelte"
     import CombinedInput from "../../inputs/CombinedInput.svelte"
     import Dropdown from "../../inputs/Dropdown.svelte"
     import MaterialButton from "../../inputs/MaterialButton.svelte"
@@ -22,12 +22,10 @@
     import MaterialToggleSwitch from "../../inputs/MaterialToggleSwitch.svelte"
 
     let outputsList: Output[] = []
-    $: outputsList = sortObject(sortByName(keysToID($outputs).filter((a) => !a.isKeyOutput)), "stageOutput")
-
-    $: if (outputsList.length && (!$currentOutputSettings || !$outputs[$currentOutputSettings])) currentOutputSettings.set(outputsList.find((a) => a.enabled)?.id || outputsList[0].id || "")
+    $: outputsList = sortObject(sortByName(keysToID($outputs)), "stageOutput")
 
     let currentOutput: Output | null = null
-    $: if ($currentOutputSettings) currentOutput = { id: $currentOutputSettings, ...$outputs[$currentOutputSettings] }
+    $: if ($currentOutputSettings) currentOutput = clone({ id: $currentOutputSettings, ...$outputs[$currentOutputSettings] })
 
     $: if (currentOutput?.blackmagic) send(BLACKMAGIC, ["GET_DEVICES"])
 
@@ -41,11 +39,11 @@
 
         // auto revert special values
         if (autoRevert.includes(key) && value && !reverted.includes(key)) {
-            newToast($dictionary.toast?.reverting_setting?.replace("{}", revertTime.toString()) || "")
+            newToast(translateText("toast.reverting_setting").replace("{}", revertTime.toString()))
             reverted.push(key)
             setTimeout(() => {
                 updateOutput(key, false, outputId)
-                newToast("$toast.reverted")
+                newToast(translateText("toast.reverted"))
             }, revertTime * 1000)
         }
 
@@ -57,7 +55,7 @@
 
         if (key === "ndi") {
             if (value) {
-                newToast("$toast.output_capture_enabled")
+                newToast("toast.output_capture_enabled")
 
                 const enabledOutputs = Object.values($outputs).filter((a) => a.enabled && !a.stageOutput)
                 if (enabledOutputs.length > 1) {
@@ -139,18 +137,11 @@
         })
     }
 
-    const isChecked = (e: any) => e.target.checked
-
-    function toggleOutput(state: boolean) {
+    function _toggleOutput(state: boolean) {
         toggleOutputEnabled.set(true) // disable preview output transitions (to prevent visual svelte bug)
         setTimeout(() => {
             updateOutput("enabled", state)
-            if ($outputDisplay) {
-                let enabled = getActiveOutputs($outputs, false)
-                Object.entries($outputs).forEach(([id, output]) => {
-                    send(OUTPUT, ["DISPLAY"], { enabled: enabled.includes(id), output: { id, ...output }, one: true })
-                })
-            }
+            if ($outputDisplay) toggleOutput(currentOutput?.id || "")
         }, 100)
     }
 
@@ -270,11 +261,11 @@
     }
     receive(BLACKMAGIC, receiveBMD, listenerId)
 
-    $: outputLabel = `${currentOutput?.bounds.width || 1920}x${currentOutput?.bounds.height || 1080}`
+    $: outputLabel = `${currentOutput?.bounds?.width || 1920}x${currentOutput?.bounds?.height || 1080}`
 </script>
 
 {#if outputsList.filter((a) => !a.stageOutput).length > 1 || !currentOutput?.enabled || currentOutput?.stageOutput}
-    <MaterialToggleSwitch label="settings.enabled" checked={currentOutput?.enabled} defaultValue={true} disabled={!currentOutput?.stageOutput && currentOutput?.enabled && activeOutputs.length < 2} on:change={(e) => toggleOutput(e.detail)} />
+    <MaterialToggleSwitch label="settings.enabled" checked={currentOutput?.enabled} defaultValue={true} disabled={!currentOutput?.stageOutput && currentOutput?.enabled && activeOutputs.length < 2} on:change={(e) => _toggleOutput(e.detail)} />
 {/if}
 
 {#if stageId}
@@ -361,12 +352,7 @@
             />
         </CombinedInput>
 
-        <CombinedInput>
-            <p><T id="settings.alpha_key" /></p>
-            <div class="alignRight">
-                <Checkbox checked={currentOutput.blackmagicData?.alphaKey} on:change={(e) => updateBlackmagicData(isChecked(e), "alphaKey")} />
-            </div>
-        </CombinedInput>
+        <MaterialToggleSwitch label="settings.alpha_key" checked={currentOutput.blackmagicData?.alphaKey} on:change={(e) => updateBlackmagicData(e.detail, "alphaKey")} />
     {/if}
 {/if}
 

@@ -1,11 +1,12 @@
 <script lang="ts">
-    import { activeFocus, activePage, activePopup, alertMessage, cachedShowsData, focusMode, lessonsLoaded, notFound, outLocked, outputs, outputSlideCache, showsCache, slidesOptions, special } from "../../stores"
-    import { wait } from "../../utils/common"
+    import { onDestroy, onMount } from "svelte"
+    import { activeFocus, activePage, activePopup, alertMessage, cachedShowsData, categories, focusMode, lessonsLoaded, notFound, outLocked, outputs, outputSlideCache, showsCache, slidesOptions, special, templates } from "../../stores"
+    import { hasNewerUpdate, wait } from "../../utils/common"
     import { getAccess } from "../../utils/profile"
     import { videoExtensions } from "../../values/extensions"
     import { customActionActivation } from "../actions/actions"
+    import { loadCustomFonts } from "../helpers/fonts"
     import { history } from "../helpers/history"
-    import Icon from "../helpers/Icon.svelte"
     import { encodeFilePath, getExtension } from "../helpers/media"
     import { getActiveOutputs, refreshOut, setOutput } from "../helpers/output"
     import { getCachedShow } from "../helpers/show"
@@ -13,7 +14,7 @@
     import { _show } from "../helpers/shows"
     import { getClosestRecordingSlide } from "../helpers/slideRecording"
     import T from "../helpers/T.svelte"
-    import Button from "../inputs/Button.svelte"
+    import MaterialButton from "../inputs/MaterialButton.svelte"
     import Loader from "../main/Loader.svelte"
     import Slide from "../slide/Slide.svelte"
     import Autoscroll from "../system/Autoscroll.svelte"
@@ -27,6 +28,16 @@
     $: currentShow = $showsCache[showId]
     $: activeLayout = layout || $showsCache[showId]?.settings?.activeLayout
     $: layoutSlides = currentShow ? getCachedShow(showId, activeLayout, $cachedShowsData)?.layout || [] : []
+
+    onMount(() => {
+        // custom fonts
+        if (currentShow?.settings?.customFonts) loadCustomFonts(currentShow.settings.customFonts)
+    })
+
+    onDestroy(() => {
+        if (timeout && typeof timeout !== "boolean") clearTimeout(timeout)
+        if (loadingTimeout) clearTimeout(loadingTimeout)
+    })
 
     // fix broken media
     $: if (showId) fixBrokenMedia()
@@ -47,12 +58,16 @@
 
     let scrollElem: HTMLElement | undefined
     let offset = -1
-    $: {
+    $: updateOffset({ $outputs })
+    async function updateOffset(_updater: any) {
+        if (!loaded || !scrollElem) return
+        if (await hasNewerUpdate("SHOWS_SCROLL_OFFSET", 50)) return
+
         let output = $outputs[activeOutputs[0]] || {}
-        if (loaded && scrollElem && showId === output.out?.slide?.id && activeLayout === output.out?.slide?.layout) {
+        if (showId === output.out?.slide?.id && activeLayout === output.out?.slide?.layout) {
             let columns = mode === "grid" ? ($slidesOptions.columns > 2 ? $slidesOptions.columns : 0) : 1
             let index = Math.max(0, (output.out.slide.index || 0) - columns)
-            offset = ((scrollElem.querySelector(".grid")?.children[index] as HTMLElement)?.offsetTop || 5) - 5
+            offset = ((scrollElem?.querySelector(".grid")?.children[index] as HTMLElement)?.offsetTop || 5) - 5
         }
     }
 
@@ -64,7 +79,7 @@
 
         customActionActivation("slide_click")
 
-        let slideRef = _show(showId).layouts([activeLayout]).ref()[0]
+        let slideRef = _show(showId).layouts([activeLayout]).ref()[0] || []
 
         let data = slideRef[index]?.data
         checkActionTrigger(data, index)
@@ -147,6 +162,9 @@
         if (!loaded) return
 
         let showTemplate = currentShow?.settings?.template || ""
+        // get category template if no show template
+        if (!showTemplate || showTemplate === "default" || !$templates[showTemplate]) showTemplate = $categories[currentShow?.category || ""]?.template || ""
+
         history({ id: "TEMPLATE", save: false, newData: { id: showTemplate }, location: { page: "show" } })
     }
 
@@ -182,15 +200,16 @@
 
         function capitalize(value: string) {
             $special.capitalize_words.split(",").forEach((word) => {
-                let newWord = word.trim().toLowerCase()
+                let newWord = word.trim()
                 if (!newWord.length) return
 
-                const regEx = new RegExp(`\\b${newWord}\\b`, "gi")
+                // match whole words, respecting Unicode letters (accented characters)
+                const regEx = new RegExp(`(?<!\\p{L})${newWord.toLowerCase()}(?!\\p{L})`, "giu")
                 value = value.replace(regEx, (match) => {
                     // always capitalize: newWord.charAt(0).toUpperCase() + newWord.slice(1)
                     // use the input case styling (meaning all uppercase/lowercase also works)
                     // but don't change anything if the text is already fully uppercase
-                    return match === match.toUpperCase() ? match : word.trim()
+                    return match === match.toUpperCase() ? match : newWord
                 })
             })
 
@@ -240,7 +259,7 @@
 
             if (activeSlides[outSlide.index] || outSlide.id !== showId || outSlide.layout !== activeLayout) return
 
-            let ref = outSlide?.id === "temp" ? [{ temp: true, items: outSlide.tempItems, id: "" }] : _show(outSlide.id).layouts([outSlide.layout]).ref()[0]
+            let ref = outSlide?.id === "temp" ? [{ temp: true, items: outSlide.tempItems, id: "" }] : _show(outSlide.id).layouts([outSlide.layout]).ref()[0] || []
             let showSlide = outSlide.index !== undefined ? _show(outSlide.id).slides([ref[outSlide.index]?.id]).get()?.[0] : null
 
             // get progress of current line division
@@ -382,6 +401,7 @@
 
         function next() {
             lazyLoader += $focusMode ? 20 : 4
+            clearTimeout(timeout as NodeJS.Timeout)
             timeout = null
             startLazyLoader()
         }
@@ -414,9 +434,11 @@
     let loading = false
     $: if (showId) startLoading()
     $: if ($notFound.show?.includes(showId)) loading = false
+    let loadingTimeout: NodeJS.Timeout | null = null
     function startLoading() {
         loading = true
-        setTimeout(() => {
+        if (loadingTimeout) clearTimeout(loadingTimeout)
+        loadingTimeout = setTimeout(() => {
             loading = false
         }, 8000)
     }
@@ -443,7 +465,7 @@
                 <div class="grid" style={$focusMode ? "" : "padding-bottom: 60px;"}>
                     {#if layoutSlides.length}
                         {#each layoutSlides as slide, i}
-                            {#if (loaded || i < lazyLoader) && currentShow.slides?.[slide.id] && (mode === "grid" || mode === "groups" || !slide.disabled) && (mode !== "groups" || currentShow.slides[slide.id].group !== null || activeSlides[i] !== undefined)}
+                            {#if (loaded || i < lazyLoader) && currentShow?.slides?.[slide.id] && (mode === "grid" || mode === "groups" || !slide.disabled) && (mode !== "groups" || currentShow.slides[slide.id].group !== null || activeSlides[i] !== undefined)}
                                 <Slide
                                     {showId}
                                     slide={currentShow.slides[slide.id]}
@@ -466,13 +488,12 @@
                             {/if}
                         {/each}
                     {:else}
-                        <Center absolute size={2}>
-                            <span style="opacity: 0.5;"><T id="empty.slides" /></span>
-                            <!-- Add slides button -->
-                            <Button disabled={isLocked} on:click={createSlide} style="font-size: initial;margin-top: 10px;" dark center>
-                                <Icon id="add" right />
+                        <Center absolute>
+                            <span style="opacity: 0.5;font-size: 2em;margin-bottom: 10px;"><T id="empty.slides" /></span>
+
+                            <MaterialButton disabled={isLocked} icon="add" title="tooltip.project" style="justify-content: start;padding: 8px 12px;" on:click={createSlide}>
                                 <T id="new.slide" />
-                            </Button>
+                            </MaterialButton>
                         </Center>
                     {/if}
                 </div>

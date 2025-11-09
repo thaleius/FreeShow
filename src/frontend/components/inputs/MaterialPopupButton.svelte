@@ -6,13 +6,15 @@
     import Icon from "../helpers/Icon.svelte"
     import MaterialButton from "./MaterialButton.svelte"
 
-    export let id: string = ""
+    export let id = ""
     export let label: string
     export let value: any
     export let defaultValue: any = null
     export let name: string
     export let icon = ""
+    export let data: any | null = null
     export let popupId: Popups
+    export let openEvent: (() => void) | null = null
 
     export let disabled = false
     export let allowEmpty = false
@@ -22,7 +24,12 @@
     function openPopup() {
         if (disabled) return
 
-        popupData.set({ active: value, id, trigger: (value) => dispatch("change", value) })
+        if (openEvent) {
+            openEvent()
+            return
+        }
+
+        popupData.set({ ...(data || {}), active: value, id, trigger: (value) => dispatch("change", value) })
         activePopup.set(popupId)
     }
 
@@ -55,7 +62,7 @@
     }
 </script>
 
-<div {id} class="textfield {disabled ? 'disabled' : ''}" data-title={translateText(`popup.${popupId}`)}>
+<div {id} class="textfield {disabled ? 'disabled' : ''}" data-title={translateText(`popup.${popupId}`)} style={$$props.style || null}>
     <div class="background" />
 
     <div
@@ -68,7 +75,7 @@
         }}
         on:keydown={handleKeydown}
     >
-        <span class="selected-text">
+        <span class="selected-text" data-title={value ? name : ""}>
             {#if value}
                 <!-- {#if icon}<Icon id={icon} white />{/if} -->
 
@@ -186,10 +193,11 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+        max-width: 88%;
 
-        display: flex;
+        /* display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 8px; */
     }
 
     .arrow {
@@ -219,6 +227,11 @@
         transition: all 0.2s ease;
         pointer-events: none;
         z-index: 1;
+
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        overflow: hidden;
+        max-width: 80%;
     }
     label.selected {
         top: 0.25rem;

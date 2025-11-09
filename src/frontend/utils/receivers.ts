@@ -16,6 +16,7 @@ import {
     activeTimers,
     alertMessage,
     allOutputs,
+    audioChannelsData,
     audioData,
     closeAd,
     colorbars,
@@ -26,9 +27,13 @@ import {
     driveData,
     dynamicValueData,
     effects,
+    equalizerConfig,
     events,
     gain,
+    livePrepare,
     media,
+    metronome,
+    metronomeTimer,
     ndiData,
     outputDisplay,
     outputs,
@@ -66,6 +71,7 @@ import { closeApp, save } from "./save"
 import { client } from "./sendData"
 import { playFolder, previewShortcuts } from "./shortcuts"
 import { restartOutputs } from "./updateSettings"
+import { setEqualizerEnabled, updateEqualizerBands } from "../audio/audioEqualizer"
 
 export function setupMainReceivers() {
     receiveMainGlobal()
@@ -99,8 +105,25 @@ const receiveOUTPUTasMAIN: any = {
     },
     OUTPUTS: (a: any) => outputs.set(a),
     RESTART: ({ id }) => restartOutputs(id),
-    DISPLAY: (a: any) => outputDisplay.set(a.enabled),
-    OUTPUT_STATE: (a: any) => outputState.set(a),
+    // DISPLAY: (a: any) => outputDisplay.set(a.enabled),
+    OUTPUT_STATE: (newStates: { id: string; active: boolean | "invisible" }[]) => {
+
+        outputState.update(a => {
+            newStates.forEach(newState => {
+                const stateIndex = a.findIndex(state => state.id === newState.id)
+                if (stateIndex < 0) a.push(newState)
+                else a[stateIndex] = newState
+            })
+
+            // only enabled ones & not invisible
+            a = a.filter(state => get(outputs)[state.id]?.enabled && !get(outputs)[state.id]?.invisible)
+
+            const getVisibleState = [...new Set((a.filter(state => typeof state.active === "boolean").map((state) => state.active) as boolean[]))]
+            if (getVisibleState.length === 1) outputDisplay.set(getVisibleState[0])
+
+            return a
+        })
+    },
     ACTION_MAIN: (a: { id: string }) => runAction(get(actions)[a.id]),
     AUDIO_MAIN: (data: any) => {
         if (!data.id) return
@@ -263,7 +286,7 @@ export const receiveOUTPUTasOUTPUT: any = {
     DRAW: (a: any) => draw.set(a.data),
     DRAW_TOOL: (a: any) => drawTool.set(a.data),
     DRAW_SETTINGS: (a: any) => drawSettings.set(a),
-    VIZUALISER_DATA: (a: any) => visualizerData.set(a),
+    VISUALIZER_DATA: (a: any) => visualizerData.set(a),
     MEDIA: (a: any) => media.set(a),
     OUT_SLIDE_CACHE: (a: any) => outputSlideCache.set(a),
     CUSTOM_CREDITS: (a: any) => customMessageCredits.set(a),
@@ -290,13 +313,24 @@ export const receiveOUTPUTasOUTPUT: any = {
 
     VOLUME: (a: any) => volume.set(a),
     GAIN: (a: any) => gain.set(a),
+    AUDIO_CHANNELS_DATA: (a: any) => audioChannelsData.set(a),
+
+    EQUALIZER_CONFIG: (a: any) => {
+        equalizerConfig.set(a)
+        setEqualizerEnabled(a.enabled)
+        updateEqualizerBands(a.bands)
+    },
+
+    METRONOME: (a: any) => metronome.set(a),
+    METRONOME_TIMER: (a: any) => metronomeTimer.set(a),
 
     // dynamic values
     PLAYING_AUDIO: (a: any) => playingAudioPaths.set(a),
     AUDIO_DATA: (a: any) => audioData.set(a),
     DYNAMIC_VALUE_DATA: (a: any) => dynamicValueData.set(a),
 
-    COLORBARS: (a: any) => colorbars.set(a)
+    COLORBARS: (a: any) => colorbars.set(a),
+    LIVE_PREPARE: (a: any) => livePrepare.set(a)
 }
 
 // NDI
@@ -387,7 +421,7 @@ const receiveCLOUD = {
         })
 
         if (!changes.length) {
-            newToast("$cloud.sync_complete")
+            newToast("cloud.sync_complete")
 
             if (get(activePopup) !== "cloud_update") return
 
@@ -402,7 +436,7 @@ const receiveCLOUD = {
         activeShow.set(null)
 
         // show completed toast
-        newToast("$cloud.sync_complete")
+        newToast("cloud.sync_complete")
 
         // show popup if manually syncing
         if (get(activePopup) === "cloud_update") {

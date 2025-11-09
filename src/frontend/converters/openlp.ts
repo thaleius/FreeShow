@@ -1,10 +1,12 @@
 import { get } from "svelte/store"
 import { uid } from "uid"
 import type { Chords, Line } from "../../types/Show"
+import { DEFAULT_ITEM_STYLE } from "../components/edit/scripts/itemHelpers"
 import { setQuickAccessMetadata } from "../components/helpers/setShow"
 import { checkName } from "../components/helpers/show"
+import { translateText } from "../utils/language"
 import { ShowObj } from "./../classes/Show"
-import { activePopup, alertMessage, dictionary, groups } from "./../stores"
+import { activePopup, alertMessage, groups } from "./../stores"
 import { createCategory, setTempShows } from "./importHelpers"
 import { xml2json } from "./xml"
 
@@ -76,7 +78,7 @@ export function convertOpenLP(data: any) {
         const { slides, layout }: any = createSlides(song)
 
         show.slides = slides
-        show.layouts = { [layoutID]: { name: get(dictionary).example?.default || "", notes: song.notes || "", slides: layout } }
+        show.layouts = { [layoutID]: { name: translateText("example.default"), notes: song.notes || "", slides: layout } }
 
         tempShows.push({ id: uid(), show })
     }
@@ -112,7 +114,7 @@ function createSlides({ verseOrder, lyrics }: Song) {
 
         const items = [
             {
-                style: "inset-inline-start:50px;top:120px;width:1820px;height:840px;",
+                style: DEFAULT_ITEM_STYLE,
                 lines: verse.lines.map((a, i) => {
                     const line: Line = { align: "", text: [{ style: "", value: formatText(a) }] }
                     if (verse.chords?.[i]?.length) line.chords = verse.chords[i]
@@ -218,10 +220,10 @@ function XMLtoObject(xml: string) {
         (Array.isArray(properties.comments)
             ? properties.comments?.map((comment) => comment["#text"] || "").join("\n")
             : typeof properties.comments?.comment === "string"
-              ? properties.comments.comment
-              : typeof properties.comments === "string"
-                ? properties.comments
-                : "") ||
+                ? properties.comments.comment
+                : typeof properties.comments === "string"
+                    ? properties.comments
+                    : "") ||
         ""
 
     const newSong: Song = {
@@ -298,7 +300,7 @@ function XMLtoObject(xml: string) {
 
         if (typeof lines !== "string") lines = ""
 
-        // remove unused line seperator char
+        // remove unused line separator char
         lines = lines.replaceAll("&#8232;", "")
         // find line breaks
         lines = lines.replaceAll('xmlns="http://openlyrics.info/namespace/2009/song"', "").replaceAll("<br/>", "\n").replaceAll("<br />", "\n")

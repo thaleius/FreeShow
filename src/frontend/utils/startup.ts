@@ -1,18 +1,23 @@
 import { get } from "svelte/store"
+import type { ContentProviderId } from "../../electron/contentProviders/base/types"
 import { OUTPUT, STARTUP } from "../../types/Channels"
 import { Main } from "../../types/IPC/Main"
 import { checkStartupActions } from "../components/actions/actions"
 import { getTimeFromInterval } from "../components/helpers/time"
 import { requestMainMultiple, sendMain, sendMainMultiple } from "../IPC/main"
-import { activePopup, alertMessage, chumsSyncCategories, currentWindow, dataPath, deviceId, isDev, language, loaded, loadedState, os, scriptures, shows, showsPath, special, tempPath, version, windowState } from "../stores"
-import { wait } from "./common"
+import { cameraManager } from "../media/cameraManager"
+import { activePopup, alertMessage, contentProviderData, currentWindow, dataPath, deviceId, isDev, language, loaded, loadedState, os, scriptures, shows, showsPath, special, tempPath, version, windowState } from "../stores"
+import { wait, waitUntilValueIsDefined } from "./common"
 import { setLanguage } from "./language"
 import { storeSubscriber } from "./listeners"
+import { openProfileByName } from "./profile"
 import { receiveOUTPUTasOUTPUT, remoteListen, setupMainReceivers } from "./receivers"
 import { destroy, receive, send } from "./request"
 import { save, unsavedUpdater } from "./save"
 
 let initialized = false
+let startupProfile = ""
+
 export function startup() {
     window.api.receive(
         STARTUP,
@@ -32,6 +37,8 @@ export function startup() {
                 return
             }
 
+            startupProfile = msg.autoProfile
+
             startupMain()
         },
         "startup"
@@ -46,12 +53,15 @@ async function startupMain() {
     await wait(100)
     getStoredData()
 
-    await waitUntilDefined(() => get(loaded))
+    await waitUntilValueIsDefined(() => get(loaded), 100, 8000)
+
+    if (startupProfile) openProfileByName(startupProfile)
+
     storeSubscriber()
     remoteListen()
     checkStartupActions()
     autoBackup()
-    connect()
+    contentProviderSync()
 
     // custom alert
     if (get(language) === "no" && !get(activePopup) && !Object.values(get(scriptures)).find((a) => ["eea18ccd2ca05dde-01", "7bcaa2f2e77739d5-01"].includes(a.id || "")) && Math.random() < 0.4) {
@@ -61,6 +71,7 @@ async function startupMain() {
 
     await wait(5000)
     unsavedUpdater()
+    cameraManager.initializeCameraWarming()
 
     // CHECK LISTENERS
     // console.log(window.api.getListeners())
@@ -86,18 +97,17 @@ function autoBackup() {
     }
 }
 
-function connect() {
-    pcoSync()
-    chumsSync()
+export function contentProviderSync() {
+    const providers = [
+        { providerId: "planningcenter" as ContentProviderId, scope: "services", data: { dataPath: get(dataPath) } },
+        { providerId: "churchApps" as ContentProviderId, scope: "plans", data: { shows: get(shows), categories: get(contentProviderData).churchApps?.syncCategories || [], showsPath: get(showsPath) || "" } }
+    ]
+
+    providers.forEach(({ providerId, scope, data }) => {
+        sendMain(Main.PROVIDER_STARTUP_LOAD, { providerId, scope, data })
+    })
 }
 
-export function pcoSync() {
-    sendMain(Main.PCO_STARTUP_LOAD, { dataPath: get(dataPath) })
-}
-
-export function chumsSync() {
-    sendMain(Main.CHUMS_STARTUP_LOAD, { shows: get(shows), categories: get(chumsSyncCategories), showsPath: get(showsPath) || "" })
-}
 
 function getMainData() {
     requestMainMultiple({
@@ -113,7 +123,7 @@ function getMainData() {
 async function getStoredData() {
     sendMainMultiple([Main.SYNCED_SETTINGS, Main.STAGE_SHOWS, Main.PROJECTS, Main.OVERLAYS, Main.TEMPLATES, Main.EVENTS, Main.MEDIA, Main.THEMES, Main.DRIVE_API_KEY, Main.HISTORY, Main.CACHE, Main.USAGE])
 
-    await waitUntilDefined(() => get(loadedState).includes("synced_settings"))
+    await waitUntilValueIsDefined(() => get(loadedState).includes("synced_settings"), 200, 8000)
     sendMain(Main.SETTINGS)
 }
 
@@ -125,21 +135,4 @@ async function startupOutput() {
     await wait(200)
 
     send(OUTPUT, ["REQUEST_DATA_MAIN"])
-}
-
-const UPDATE_INTERVAL = 200
-const MAX_TIME = 8000
-async function waitUntilDefined(getValue: any) {
-    return new Promise((resolve) => {
-        let timeWaited = 0
-        const checkDefinedInterval = setInterval(checkValue, UPDATE_INTERVAL)
-
-        function checkValue() {
-            timeWaited += UPDATE_INTERVAL
-            if (!getValue() && timeWaited < MAX_TIME) return
-
-            clearInterval(checkDefinedInterval)
-            resolve(true)
-        }
-    })
 }

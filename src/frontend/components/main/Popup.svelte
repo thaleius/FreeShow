@@ -97,7 +97,7 @@
         .popup {
             padding: 20px;
             position: absolute;
-            inset-inline-start: 50%;
+            left: 50%;
             top: 50%;
             /* 12px for windows menu bar */
             transform: translate(-50%, calc(-50% + 12px));
@@ -111,7 +111,6 @@
         /* background-color: rgba(41, 44, 54, 0.8);
         backdrop-filter: blur(4px); */
 
-        /* border-radius: var(--border-radius); */
         border-radius: 10px;
 
         /* overflow-y: auto; */
@@ -188,7 +187,7 @@
     }
 
     .card :global(.popup-back) {
-        inset-inline-start: 0;
+        left: 0;
 
         max-height: 35.2px;
         margin-top: 10px;

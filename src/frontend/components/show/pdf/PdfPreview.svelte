@@ -3,12 +3,13 @@
     import { onDestroy, onMount } from "svelte"
     import { Main } from "../../../../types/IPC/Main"
     import { sendMain } from "../../../IPC/main"
-    import { dataPath, labelsDisabled, outLocked, outputs, slidesOptions, styles } from "../../../stores"
+    import { activePopup, activeProject, dataPath, focusMode, labelsDisabled, outLocked, outputs, popupData, projects, slidesOptions, styles } from "../../../stores"
     import { triggerClickOnEnterSpace } from "../../../utils/clickable"
     import { newToast, wait } from "../../../utils/common"
+    import { translateText } from "../../../utils/language"
     import Icon from "../../helpers/Icon.svelte"
     import { getFileName, removeExtension } from "../../helpers/media"
-    import { getActiveOutputs, setOutput } from "../../helpers/output"
+    import { getActiveOutputs, setOutput, startFolderTimer } from "../../helpers/output"
     import T from "../../helpers/T.svelte"
     import FloatingInputs from "../../input/FloatingInputs.svelte"
     import MaterialButton from "../../inputs/MaterialButton.svelte"
@@ -17,6 +18,11 @@
     import { clearBackground } from "../../output/clear"
 
     export let show
+    export let index: number
+
+    let data: { timer?: number } | undefined
+    $: data = $projects[$activeProject || ""]?.shows?.[index]?.data
+
     $: path = show.id
 
     $: activeOutput = getActiveOutputs($outputs, false, true, true)[0]
@@ -41,6 +47,8 @@
         setOutput("slide", { type: "pdf", id: path, page, pages: pageCount, name })
 
         clearBackground()
+
+        if (timer) startFolderTimer(path, { type: "pdf", path: "" })
     }
 
     /////
@@ -79,7 +87,7 @@
             canvas!.height = viewport.height
             canvas!.width = viewport.width
 
-            await page.render({ canvasContext: context, viewport }).promise
+            await page.render({ canvas: canvas!, canvasContext: context, viewport }).promise
 
             // display when the first page has loaded
             loading = false
@@ -87,14 +95,31 @@
     }
 
     function convertToImages() {
-        newToast("$actions.converting")
+        newToast("actions.converting")
         sendMain(Main.PDF_TO_IMAGE, { dataPath: $dataPath, filePath: path })
     }
+
+    $: timer = data?.timer || 0
+    $: totalTime = pageCount * timer
 </script>
 
 <div class="grid">
     {#each { length: pageCount } as _page, i}
         <div class="main" class:active={active === i} style="{output?.color ? 'outline: 2px solid ' + output.color + ';' : ''}width: {100 / (pageCount > 1 ? $slidesOptions.columns : 1)}%;">
+            <!-- icons -->
+            <div class="icons">
+                {#if timer}
+                    <div>
+                        <div class="button">
+                            <div style="padding: 3px;" data-title={translateText("preview.nextTimer")}>
+                                <Icon id="clock" size={0.9} white />
+                            </div>
+                        </div>
+                        <span><p>{timer}</p></span>
+                    </div>
+                {/if}
+            </div>
+
             <div class="slide" style={transparentOutput ? "" : `background-color: ${currentStyle.background};`} tabindex={0} role="button" on:click={(e) => outputPdf(e, i)} on:keydown={triggerClickOnEnterSpace}>
                 <canvas bind:this={canvases[i]} />
             </div>
@@ -108,19 +133,35 @@
     {/if}
 </div>
 
-<!-- <FloatingInputs side="left">
+{#if !$focusMode}
+    <!-- <FloatingInputs side="left">
     <span style="min-width: 60px;display: flex;align-items: center;justify-content: center;opacity: 0.8;">PDF</span>
 </FloatingInputs> -->
 
-<FloatingInputs>
-    <MaterialButton icon="image" on:click={convertToImages} style="white-space: nowrap;">
-        {#if !$labelsDisabled}<T id="actions.convert_to_images" />{/if}
-    </MaterialButton>
+    <FloatingInputs>
+        <MaterialButton icon="image" on:click={convertToImages} style="white-space: nowrap;">
+            {#if !$labelsDisabled}<T id="actions.convert_to_images" />{/if}
+        </MaterialButton>
 
-    <div class="divider"></div>
+        <div class="divider"></div>
 
-    <MaterialZoom columns={$slidesOptions.columns} on:change={(e) => slidesOptions.set({ ...$slidesOptions, columns: e.detail })} />
-</FloatingInputs>
+        <MaterialButton
+            disabled={pageCount < 2}
+            on:click={() => {
+                popupData.set({ type: "pdf", value: timer, totalTime, count: pageCount })
+                activePopup.set("next_timer")
+            }}
+            title="popup.next_timer{totalTime !== 0 ? `: ${totalTime}s` : ''}"
+        >
+            <Icon size={1.1} id="clock" white={totalTime === 0} />
+            <!-- {joinTime(secondsToTime(totalTime))} -->
+        </MaterialButton>
+
+        <div class="divider"></div>
+
+        <MaterialZoom columns={$slidesOptions.columns} on:change={(e) => slidesOptions.set({ ...$slidesOptions, columns: e.detail })} />
+    </FloatingInputs>
+{/if}
 
 <style>
     canvas {
@@ -135,7 +176,7 @@
     .load {
         position: absolute;
         top: 0;
-        inset-inline-start: 0;
+        left: 0;
         width: 100%;
         height: 100%;
 
@@ -196,5 +237,39 @@
     .main.active {
         outline: 2px solid var(--secondary);
         outline-offset: -1px;
+    }
+
+    /* icons */
+
+    .icons {
+        pointer-events: none;
+        display: flex;
+        flex-direction: column;
+        position: absolute;
+        z-index: 1;
+        font-size: 0.9em;
+
+        height: 80%;
+        flex-wrap: wrap;
+        place-items: start;
+        left: 0;
+    }
+
+    .icons div {
+        opacity: 0.9;
+        display: flex;
+    }
+    .icons .button {
+        background-color: rgb(0 0 0 / 0.6);
+        pointer-events: all;
+    }
+    .icons span {
+        pointer-events: all;
+        background-color: rgb(0 0 0 / 0.6);
+        padding: 3px;
+        font-size: 0.75em;
+        font-weight: bold;
+        display: flex;
+        align-items: center;
     }
 </style>

@@ -11,7 +11,7 @@ import { sortByName } from "../components/helpers/array"
 import { copy, cut, deleteAction, duplicate, paste, selectAll } from "../components/helpers/clipboard"
 import { history, redo, undo } from "../components/helpers/history"
 import { getMediaStyle, getMediaType } from "../components/helpers/media"
-import { displayOutputs, getActiveOutputs, refreshOut, setOutput, startFolderTimer } from "../components/helpers/output"
+import { getActiveOutputs, refreshOut, setOutput, startFolderTimer, toggleOutputs } from "../components/helpers/output"
 import { nextSlideIndividual, previousSlideIndividual } from "../components/helpers/showActions"
 import { stopSlideRecording, updateSlideRecording } from "../components/helpers/slideRecording"
 import { clearAll, clearBackground, clearSlide } from "../components/output/clear"
@@ -69,9 +69,9 @@ const ctrlKeys = {
     e: () => activePopup.set("export"),
     i: (e: KeyboardEvent) => (e.altKey ? importFromClipboard() : activePopup.set("import")),
     n: () => createNew(),
-    h: () => activePopup.set("history"),
+    h: () => get(activeDrawerTab) === "scripture" ? "" : activePopup.set("history"),
     m: () => volume.set(get(volume) ? 0 : 1),
-    o: () => displayOutputs(),
+    o: () => toggleOutputs(),
     s: () => save(),
     t: () => togglePanels(),
     y: () => redo(),
@@ -81,8 +81,15 @@ const ctrlKeys = {
 }
 
 const shiftCtrlKeys = {
+    d: () => get(activePage) === "show" && get(activeShow) && (get(activeShow)?.type || "show") === "show" ? activePopup.set("next_timer") : "",
+    // t: () => activePopup.set("translate"),
     f: () => menuClick("focus_mode"),
-    v: () => changeSlidesView()
+    n: () => activePopup.set("show"),
+    v: () => changeSlidesView(),
+}
+
+const altKeys = {
+    Enter: () => get(activePage) === "show" ? menuClick("cut_in_half", true, null, null, null, get(selected)) : null,
 }
 
 export const disablePopupClose = ["initialize", "cloud_method"]
@@ -125,7 +132,7 @@ const keys = {
     Delete: () => deleteAction(get(selected), "remove"),
     Backspace: () => keys.Delete(),
     // give time so it don't clear slide
-    F2: () => setTimeout(() => menuClick("rename", true, null, null, null, get(selected))),
+    F2: () => get(focusMode) ? null : setTimeout(() => menuClick("rename", true, null, null, null, get(selected))),
     // default menu "togglefullscreen" role not working in production on Windows/Linux
     F11: () => (get(os).platform !== "darwin" ? sendMain(Main.FULLSCREEN) : null)
 }
@@ -192,7 +199,15 @@ export function keydown(e: KeyboardEvent) {
         return
     }
 
-    if (e.altKey) return
+    if (e.altKey) {
+        if (altKeys[e.key]) {
+            // if (document.activeElement?.classList.contains("edit") || document.activeElement?.tagName === "INPUT") return
+            e.preventDefault()
+            altKeys[e.key](e)
+        }
+        return
+    }
+
     if (document.activeElement?.classList.contains("edit") && e.key !== "Escape") return
 
     // change tab with number keys
@@ -236,7 +251,7 @@ export const previewShortcuts = {
     },
     F2: () => {
         // return if "rename" is selected
-        if (get(outLocked) || (get(selected).id && get(selected).id !== "scripture")) return false
+        if (get(outLocked) || (get(selected).id && get(selected).id !== "scripture" && !get(focusMode))) return false
         if (presentationControllersKeysDisabled()) return false
 
         clearSlide()
@@ -291,7 +306,7 @@ export const previewShortcuts = {
                     e.preventDefault()
                     return setOutput("overlays", currentShow.id, false, "", true)
                 } else if ((currentShow?.type === "video" || currentShow?.type === "image" || currentShow?.type === "player") && (out?.background?.path || out?.background?.id) !== currentShow?.id) {
-                    return playMedia(e)
+                    return togglePlayingMedia(e)
                     // } else if (currentShow?.type === "folder") {
                     //     return playMedia(e)
                 }
@@ -331,7 +346,7 @@ export const previewShortcuts = {
                 e.preventDefault()
                 return setOutput("overlays", currentShow.id, false, "", true)
             }
-            return playMedia(e)
+            return togglePlayingMedia(e)
         }
 
         const allActiveOutputs = getActiveOutputs(get(outputs), true, true, true)
@@ -402,14 +417,14 @@ function createNew() {
     }
 }
 
-function playMedia(e: Event, back = false) {
+export function togglePlayingMedia(e: Event | null = null, back = false) {
     if (get(outLocked)) return
     // if ($focusMode || e.target?.closest(".edit") || e.target?.closest("input")) return
     const item = get(focusMode) ? get(activeFocus) : get(activeShow)
 
     const type: ShowType | undefined = item?.type
     if (!item || !type) return
-    e.preventDefault()
+    e?.preventDefault()
 
     const outputId: string = getActiveOutputs(get(outputs), false, true, true)[0]
     const currentOutput = get(outputs)[outputId] || {}
@@ -425,8 +440,6 @@ function playMedia(e: Event, back = false) {
             const videoData = get(videosData)[outputId] || {}
             activeOutputIds.forEach((id) => {
                 dataValues[id] = { ...videoData, muted: id !== outputId ? true : videoData.muted, paused: !videoData.paused }
-                const keyOutput = get(outputs)[id].keyOutput
-                if (keyOutput) dataValues[keyOutput] = videoData
             })
 
             send(OUTPUT, ["DATA"], dataValues)
@@ -434,8 +447,17 @@ function playMedia(e: Event, back = false) {
         }
 
         const outputStyle = get(styles)[currentOutput.style || ""]
-        const mediaStyle = getMediaStyle(get(media)[item.id], outputStyle)
-        setOutput("background", { type, path: item.id, muted: false, loop: false, ...mediaStyle })
+        const mediaData = get(media)[item.id] || {}
+        const mediaStyle = getMediaStyle(mediaData, outputStyle)
+
+        const videoType = mediaData.videoType
+        const shouldLoop = videoType === "background" ? true : false
+        const shouldBeMuted = videoType === "background" ? true : false
+
+        // clear slide
+        if (videoType === "foreground" || (videoType !== "background" && (type === "image" || !shouldLoop))) clearSlide()
+
+        setOutput("background", { type, path: item.id, muted: shouldBeMuted, loop: shouldLoop, ...mediaStyle })
     } else if (type === "audio") {
         AudioPlayer.start(item.id, { name: (item as any).name || "" }, { pauseIfPlaying: true })
     } else if (type === "folder") {

@@ -1,14 +1,18 @@
 import { get } from "svelte/store"
 import { OUTPUT, REMOTE, STAGE } from "../../types/Channels"
+import { AudioPlayer } from "../audio/audioPlayer"
 import { midiInListen } from "../components/actions/midi"
 import { getActiveOutputs } from "../components/helpers/output"
 import { loadShows } from "../components/helpers/setShow"
 import { getShowCacheId, updateCachedShow, updateCachedShows, updateShowsList } from "../components/helpers/show"
 import {
     $,
+    actions,
     activeProject,
     activeScripture,
     activeShow,
+    activeTimers,
+    audioChannelsData,
     audioData,
     cachedShowsData,
     colorbars,
@@ -17,12 +21,16 @@ import {
     drawSettings,
     drawTool,
     driveKeys,
+    effects,
+    equalizerConfig,
     events,
     folders,
     gain,
     groups,
+    livePrepare,
     media,
-    actions,
+    metronome,
+    metronomeTimer,
     openedFolders,
     outputs,
     outputSlideCache,
@@ -42,23 +50,18 @@ import {
     timers,
     transitionData,
     variables,
-    volume,
-    effects,
-    activeTimers
+    volume
 } from "../stores"
+import { hasNewerUpdate } from "./common"
 import { driveConnect } from "./drive"
 import { convertBackgrounds } from "./remoteTalk"
 import { send } from "./request"
 import { arrayToObject, eachConnection, filterObjectArray, sendData, timedout } from "./sendData"
-import { AudioPlayer } from "../audio/audioPlayer"
 
 export function storeSubscriber() {
-    // load new show on show change
-    activeShow.subscribe((a) => {
-        if (a && (a.type === undefined || a.type === "show")) loadShows([a.id])
-    })
+    shows.subscribe(async (data) => {
+        if (await hasNewerUpdate("LISTENER_SHOWS", 200)) return
 
-    shows.subscribe((data) => {
         // sendData(REMOTE, { channel: "SHOWS", data })
 
         // temporary cache shows data
@@ -68,41 +71,42 @@ export function storeSubscriber() {
         // send(OUTPUT, ["SHOWS_DATA"], data)
     })
 
-    let timeout: NodeJS.Timeout | null = null
-    showsCache.subscribe((data) => {
+    showsCache.subscribe(async (data) => {
+        if (await hasNewerUpdate("LISTENER_SHOWSCACHE")) return
+
+        // needs to be sent before output data
         send(OUTPUT, ["SHOWS"], data)
 
-        if (timeout) clearTimeout(timeout)
-        timeout = setTimeout(() => {
-            // STAGE
-            // sendData(STAGE, { channel: "SLIDES" })
-            sendData(STAGE, { channel: "SHOW_DATA" })
+        if (await hasNewerUpdate("LISTENER_SHOWSCACHE_LONGER", 50)) return
 
-            // REMOTE
+        // STAGE
+        // sendData(STAGE, { channel: "SLIDES" })
+        sendData(STAGE, { channel: "SHOW_DATA" })
 
-            // sendData(REMOTE, { channel: "SHOWS", data: get(shows) })
+        // REMOTE
 
-            // WIP convertBackgrounds is triggered many times...
+        // sendData(REMOTE, { channel: "SHOWS", data: get(shows) })
 
-            // TODO: ?
-            // send(REMOTE, ["SHOW"], data )
-            timedout(REMOTE, { channel: "SHOW", data }, () =>
-                eachConnection(REMOTE, "SHOW", async (connection) => {
-                    return connection.active ? await convertBackgrounds({ ...data[connection.active], id: connection.active }) : null
-                })
-            )
-            // TODO: this, timedout +++
-            // this is just for updating output slide pos I guess
-            sendData(REMOTE, { channel: "OUT" })
+        // WIP convertBackgrounds is triggered many times...
 
-            // cache shows data for faster show loading (if it's less than 100)
-            if (Object.keys(data).length < 100) updateCachedShows(data)
+        // TODO: ?
+        // send(REMOTE, ["SHOW"], data )
+        timedout(REMOTE, { channel: "SHOW", data }, () =>
+            eachConnection(REMOTE, "SHOW", async (connection) => {
+                return connection.active ? await convertBackgrounds({ ...data[connection.active], id: connection.active }) : null
+            })
+        )
+        // TODO: this, timedout +++
+        // this is just for updating output slide pos I guess
+        // sendData(REMOTE, { channel: "OUT" })
 
-            timeout = null
-        }, 80)
+        // cache shows data for faster show loading (if it's less than 100)
+        if (Object.keys(data).length < 100) updateCachedShows(data)
     })
 
-    templates.subscribe((data) => {
+    templates.subscribe(async (data) => {
+        if (await hasNewerUpdate("LISTENER_TEMPLATES", 50)) return
+
         send(OUTPUT, ["TEMPLATES"], data)
 
         // set all loaded shows to false, so show style can be updated from template again
@@ -119,7 +123,9 @@ export function storeSubscriber() {
         //     if (get(showsCache)[id]?.settings?.template === id) // set false
         // });
     })
-    overlays.subscribe((data) => {
+    overlays.subscribe(async (data) => {
+        if (await hasNewerUpdate("LISTENER_OVERLAYS", 50)) return
+
         send(OUTPUT, ["OVERLAYS"], data)
         send(REMOTE, ["OVERLAYS"], data)
     })
@@ -134,20 +140,21 @@ export function storeSubscriber() {
     scriptures.subscribe((data) => {
         send(REMOTE, ["SCRIPTURE"], data)
     })
-    // Debounce and filter ACTIVE_SCRIPTURE to avoid sending partial states (book-only/chapter-only)
-    let activeScriptureTimer: any
-    activeScripture.subscribe((data) => {
-        if (activeScriptureTimer) clearTimeout(activeScriptureTimer)
-        activeScriptureTimer = setTimeout(() => {
-            const source: any = (data && (data.api || data.bible)) || data || {}
-            const hasBook = source.bookId !== undefined && source.bookId !== null
-            const hasChapter = source.chapterId !== undefined && source.chapterId !== null
-            const hasVerses = Array.isArray(source.activeVerses) && source.activeVerses.length > 0
-            if (hasBook && hasChapter && hasVerses) send(REMOTE, ["ACTIVE_SCRIPTURE"], data)
-        }, 120)
+    activeScripture.subscribe(async (data) => {
+        // Debounce and filter ACTIVE_SCRIPTURE to avoid sending partial states (book-only/chapter-only)
+        if (await hasNewerUpdate("LISTENER_ACTIVE_SCRIPTURE", 120)) return
+
+        const source: any = (data && (data.api || data.bible)) || data || {}
+        const hasBook = source.bookId !== undefined && source.bookId !== null
+        const hasChapter = source.chapterId !== undefined && source.chapterId !== null
+        const hasVerses = Array.isArray(source.activeVerses) && source.activeVerses.length > 0
+        if (hasBook && hasChapter && hasVerses) send(REMOTE, ["ACTIVE_SCRIPTURE"], data)
     })
 
-    outputs.subscribe((data) => {
+    outputs.subscribe(async (data) => {
+        // wait in case multiple slide layers get activated right after each other - to reduce the amount of updates
+        if (await hasNewerUpdate("LISTENER_OUTPUTS", 1)) return
+
         send(OUTPUT, ["OUTPUTS"], data)
         // used for stage mirror data
         send(OUTPUT, ["ALL_OUTPUTS"], data)
@@ -170,7 +177,9 @@ export function storeSubscriber() {
     playerVideos.subscribe((data) => {
         send(OUTPUT, ["PLAYER_VIDEOS"], data)
     })
-    stageShows.subscribe((data) => {
+    stageShows.subscribe(async (data) => {
+        if (await hasNewerUpdate("LISTENER_STAGE", 50)) return
+
         send(OUTPUT, ["STAGE_SHOWS"], data)
 
         // STAGE
@@ -187,20 +196,34 @@ export function storeSubscriber() {
     })
 
     draw.subscribe((data) => {
-        const activeOutputs = getActiveOutputs(get(outputs), true, true, true)
-        activeOutputs.forEach((id) => {
-            send(OUTPUT, ["DRAW"], { id, data })
+        // if (await hasNewerUpdate("LISTENER_DRAW")) return
+
+        const allOutputs = getActiveOutputs(get(outputs), false, false, true)
+        const activeOutputs = getActiveOutputs(get(outputs), true, false, true)
+        allOutputs.forEach((id) => {
+            if (activeOutputs.includes(id)) send(OUTPUT, ["DRAW"], { id, data })
+            else send(OUTPUT, ["DRAW"], { id, data: null })
         })
     })
     drawTool.subscribe((data) => {
         // WIP changing tool while output is not active, will not update tool in output if set to active before changing tool again
-        const activeOutputs = getActiveOutputs()
-        activeOutputs.forEach((id) => {
-            send(OUTPUT, ["DRAW_TOOL"], { id, data })
+        const allOutputs = getActiveOutputs(get(outputs), false, false, true)
+        const activeOutputs = getActiveOutputs(get(outputs), true, false, true)
+        allOutputs.forEach((id) => {
+            if (activeOutputs.includes(id)) send(OUTPUT, ["DRAW_TOOL"], { id, data })
+            else send(OUTPUT, ["DRAW_TOOL"], { id, data: "focus" })
         })
     })
     drawSettings.subscribe((data) => {
-        send(OUTPUT, ["DRAW_SETTINGS"], data)
+        const allOutputs = getActiveOutputs(get(outputs), false, false, true)
+        const activeOutputs = getActiveOutputs(get(outputs), true, false, true)
+        allOutputs.forEach((id) => {
+            if (activeOutputs.includes(id)) send(OUTPUT, ["DRAW_SETTINGS"], data)
+            else {
+                send(OUTPUT, ["DRAW_TOOL"], { id, data: "focus" })
+                send(OUTPUT, ["DRAW"], { id, data: null })
+            }
+        })
     })
 
     transitionData.subscribe((data) => {
@@ -211,7 +234,9 @@ export function storeSubscriber() {
     media.subscribe((data) => {
         send(OUTPUT, ["MEDIA"], data)
     })
-    outputSlideCache.subscribe((a) => {
+    outputSlideCache.subscribe(async (a) => {
+        if (await hasNewerUpdate("LISTENER_SLIDE_CACHE", 50)) return
+
         send(OUTPUT, ["OUT_SLIDE_CACHE"], a)
         send(STAGE, ["OUT_SLIDE_CACHE"], a)
     })
@@ -220,7 +245,9 @@ export function storeSubscriber() {
         send(OUTPUT, ["CUSTOM_CREDITS"], data)
     })
 
-    effects.subscribe((data) => {
+    effects.subscribe(async (data) => {
+        if (await hasNewerUpdate("LISTENER_EFFECTS", 50)) return
+
         send(OUTPUT, ["EFFECTS"], data)
     })
 
@@ -249,6 +276,21 @@ export function storeSubscriber() {
     })
     gain.subscribe((data) => {
         send(OUTPUT, ["GAIN"], data)
+    })
+    audioChannelsData.subscribe((data) => {
+        send(OUTPUT, ["AUDIO_CHANNELS_DATA"], data)
+    })
+
+    equalizerConfig.subscribe((data) => {
+        send(OUTPUT, ["EQUALIZER_CONFIG"], data)
+    })
+
+    metronome.subscribe((data) => {
+        send(OUTPUT, ["METRONOME"], data)
+    })
+    metronomeTimer.subscribe((data) => {
+        send(OUTPUT, ["METRONOME_TIMER"], data)
+        // WIP send to stage
     })
 
     timeFormat.subscribe((a) => {
@@ -285,6 +327,9 @@ export function storeSubscriber() {
     colorbars.subscribe((a) => {
         send(OUTPUT, ["COLORBARS"], a)
     })
+    livePrepare.subscribe((a) => {
+        send(OUTPUT, ["LIVE_PREPARE"], a)
+    })
 
     //
 
@@ -294,6 +339,9 @@ export function storeSubscriber() {
         if (!data?.id) return
         const type = data?.type || "show"
         if (type !== "show") return
+
+        // load new show on show change
+        loadShows([data.id])
 
         const show = get(showsCache)[data.id]
         cachedShowsData.update((a) => {
@@ -332,7 +380,7 @@ const initalOutputData = {
     DRAW_TOOL: { data: "drawTool" },
     DRAW_SETTINGS: "drawSettings",
 
-    VIZUALISER_DATA: "visualizerData",
+    VISUALIZER_DATA: "visualizerData",
     MEDIA: "media",
     EFFECTS: "effects",
     TIMERS: "timers",

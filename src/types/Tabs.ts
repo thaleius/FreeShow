@@ -12,6 +12,7 @@ export interface Category {
     description?: string
     isArchive?: boolean
     action?: string // trigger custom action on content presentation
+    template?: string // set a custom template all shows within this category will use by default (if no other template is set)
     submenu?: { options: any[] } // open a submenu of options (tags)
     openTrigger?: Function // trigger a custom function
 }
@@ -19,14 +20,14 @@ export interface Category {
 export interface BibleCategories extends Category {
     customName?: string
     api?: boolean
-    copyright?: string // API copyright information
+    metadata?: { [key: string]: string } // metadata information
+    copyright?: string // API copyright information (should move to metadata)
     attributionRequired?: boolean // API needs attribution
     attributionString?: string // API needs custom attribution
-    books2?: any[] // api cache
-    cacheUpdate?: Date
-    biblePreviewIndex?: number
+    favorite?: boolean // marked as favorite
     collection?: {
         versions: string[]
+        previewIndex?: number
     }
 }
 

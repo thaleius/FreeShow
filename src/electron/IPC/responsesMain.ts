@@ -8,17 +8,16 @@ import type { MainResponses } from "../../types/IPC/Main"
 import { Main } from "../../types/IPC/Main"
 import type { ErrorLog, LyricSearchResult, OS } from "../../types/Main"
 import { setPlayingState, unsetPlayingAudio } from "../audio/nowPlaying"
-import { chumsDisconnect, chumsLoadServices, chumsStartupLoad } from "../chums"
+import { ContentProviderRegistry } from "../contentProviders"
 import { restoreFiles } from "../data/backup"
 import { checkIfMediaDownloaded, downloadLessonsMedia, downloadMedia } from "../data/downloadMedia"
 import { importShow } from "../data/import"
 import { save } from "../data/save"
 import { config, error_log, getStore, stores, updateDataPath, userDataPath } from "../data/store"
-import { captureSlide, getThumbnail, getThumbnailFolderPath, pdfToImage, saveImage } from "../data/thumbnails"
+import { captureSlide, doesMediaExist, getThumbnail, getThumbnailFolderPath, pdfToImage, saveImage } from "../data/thumbnails"
 import { OutputHelper } from "../output/OutputHelper"
+import { libreConvert } from "../output/ppt/libreConverter"
 import { getPresentationApplications, presentationControl, startSlideshow } from "../output/ppt/presentation"
-import { pcoDisconnect, pcoStartupLoad } from "../planningcenter/connect"
-import { pcoLoadServices } from "../planningcenter/request"
 import { closeServers, startServers, updateServerData } from "../servers"
 import { apiReturnData, emitOSC, startWebSocketAndRest, stopApiListener } from "../utils/api"
 import { closeMain, forceCloseApp } from "../utils/close"
@@ -40,7 +39,7 @@ import {
     loadFile,
     loadShows,
     locateMediaFile,
-    openSystemFolder,
+    openInSystem,
     readExifData,
     readFile,
     selectFiles,
@@ -62,7 +61,7 @@ export const mainResponses: MainResponses = {
     // APP
     [Main.VERSION]: () => getVersion(),
     [Main.GET_OS]: () => getOS(),
-    [Main.DEVICE_ID]: () => machineIdSync(),
+    [Main.DEVICE_ID]: () => getMachineId(),
     [Main.IP]: () => os.networkInterfaces(),
     // STORES
     [Main.SETTINGS]: () => getStore("SETTINGS"),
@@ -105,10 +104,10 @@ export const mainResponses: MainResponses = {
     [Main.SHOWS_PATH]: () => getDocumentsFolder(),
     [Main.DATA_PATH]: () => getDocumentsFolder(null, ""),
     [Main.LOG_ERROR]: (data) => logError(data),
-    [Main.OPEN_LOG]: () => openSystemFolder(error_log.path),
-    [Main.OPEN_CACHE]: () => openSystemFolder(getThumbnailFolderPath()),
-    [Main.OPEN_APPDATA]: () => openSystemFolder(path.dirname(config.path)),
-    [Main.OPEN_FOLDER_PATH]: (folderPath) => openSystemFolder(folderPath),
+    [Main.OPEN_LOG]: () => openInSystem(error_log.path),
+    [Main.OPEN_CACHE]: () => openInSystem(getThumbnailFolderPath(), true),
+    [Main.OPEN_APPDATA]: () => openInSystem(path.dirname(config.path), true),
+    [Main.OPEN_FOLDER_PATH]: (folderPath) => openInSystem(folderPath, true),
     [Main.GET_STORE_VALUE]: (data) => getStoreValue(data),
     [Main.SET_STORE_VALUE]: (data) => setStoreValue(data),
     // SHOWS
@@ -123,6 +122,7 @@ export const mainResponses: MainResponses = {
     [Main.GET_DISPLAYS]: () => screen.getAllDisplays(),
     [Main.OUTPUT]: (_, e) => (e.sender.id === getMainWindow()?.webContents.id ? "false" : "true"),
     // MEDIA
+    [Main.DOES_MEDIA_EXIST]: (data) => doesMediaExist(data),
     [Main.GET_THUMBNAIL]: (data) => getThumbnail(data),
     [Main.SAVE_IMAGE]: (data) => saveImage(data),
     [Main.PDF_TO_IMAGE]: (data) => pdfToImage(data),
@@ -131,7 +131,7 @@ export const mainResponses: MainResponses = {
     [Main.MEDIA_TRACKS]: (data) => getMediaTracks(data),
     [Main.DOWNLOAD_LESSONS_MEDIA]: (data) => downloadLessonsMedia(data),
     [Main.MEDIA_DOWNLOAD]: (data) => downloadMedia(data),
-    [Main.MEDIA_IS_DOWNLOADED]: (data) => checkIfMediaDownloaded(data),
+    [Main.MEDIA_IS_DOWNLOADED]: async (data) => await checkIfMediaDownloaded(data),
     [Main.NOW_PLAYING]: (data) => setPlayingState(data),
     [Main.NOW_PLAYING_UNSET]: (data) => unsetPlayingAudio(data),
     // [Main.MEDIA_BASE64]: (data) => storeMedia(data),
@@ -140,6 +140,7 @@ export const mainResponses: MainResponses = {
     [Main.ACCESS_MICROPHONE_PERMISSION]: () => getPermission("microphone"),
     [Main.ACCESS_SCREEN_PERMISSION]: () => getPermission("screen"),
     // PPT
+    [Main.LIBREOFFICE_CONVERT]: (data) => libreConvert(data),
     [Main.SLIDESHOW_GET_APPS]: () => getPresentationApplications(),
     [Main.START_SLIDESHOW]: (data) => startSlideshow(data),
     [Main.PRESENTATION_CONTROL]: (data) => presentationControl(data),
@@ -165,7 +166,7 @@ export const mainResponses: MainResponses = {
     [Main.SEARCH_LYRICS]: (data) => searchLyrics(data),
     // FILES
     [Main.RESTORE]: (data) => restoreFiles(data),
-    [Main.SYSTEM_OPEN]: (data) => openSystemFolder(data),
+    [Main.SYSTEM_OPEN]: (data) => openInSystem(data),
     [Main.DOES_PATH_EXIST]: (data) => {
         let configPath = data.path
         if (configPath === "data_config") configPath = path.join(data.dataPath, dataFolderNames.userData)
@@ -188,14 +189,45 @@ export const mainResponses: MainResponses = {
     [Main.READ_FILE]: (data) => ({ content: readFile(data.path) }),
     [Main.OPEN_FOLDER]: (data) => selectFolder(data),
     [Main.OPEN_FILE]: (data) => selectFiles(data),
-    // CONNECTION
-    [Main.PCO_LOAD_SERVICES]: (data) => pcoLoadServices(data.dataPath),
-    [Main.PCO_STARTUP_LOAD]: (data) => pcoStartupLoad(data.dataPath),
-    [Main.PCO_DISCONNECT]: () => pcoDisconnect(),
-    // Chums CONNECTION
-    [Main.CHUMS_LOAD_SERVICES]: () => chumsLoadServices(),
-    [Main.CHUMS_STARTUP_LOAD]: (data) => chumsStartupLoad("plans", data),
-    [Main.CHUMS_DISCONNECT]: () => chumsDisconnect()
+    // Provider-based routing
+    [Main.PROVIDER_LOAD_SERVICES]: async (data) => {
+        await ContentProviderRegistry.loadServices(data.providerId, data.dataPath)
+    },
+    [Main.PROVIDER_DISCONNECT]: (data) => {
+        ContentProviderRegistry.disconnect(data.providerId, data.scope)
+        return { success: true }
+    },
+    [Main.PROVIDER_STARTUP_LOAD]: async (data) => {
+        await ContentProviderRegistry.startupLoad(data.providerId, data.scope || "", data.data)
+    },
+    // Content Library
+    [Main.GET_CONTENT_PROVIDERS]: () => {
+        const providers = ContentProviderRegistry.getAvailableProviders()
+        return providers.map(providerId => {
+            const provider = ContentProviderRegistry.getProvider(providerId)
+            return {
+                providerId,
+                displayName: provider?.displayName || providerId,
+                hasContentLibrary: provider?.hasContentLibrary || false
+            }
+        })
+    },
+    [Main.GET_CONTENT_LIBRARY]: async (data) => {
+        const provider = ContentProviderRegistry.getProvider(data.providerId)
+        if (!provider?.getContentLibrary) {
+            console.error(`Provider ${data.providerId} does not support content library`)
+            return []
+        }
+        return await provider.getContentLibrary()
+    },
+    [Main.GET_PROVIDER_CONTENT]: async (data) => {
+        const provider = ContentProviderRegistry.getProvider(data.providerId)
+        if (!provider?.getContent) {
+            console.error(`Provider ${data.providerId} does not support getContent`)
+            return []
+        }
+        return await provider.getContent(data.key)
+    }
 }
 
 /// ///////
@@ -211,7 +243,7 @@ export function startImport(data: { channel: string; format: { name: string; ext
 }
 
 // BIBLE
-export function loadScripture(msg: { id: string; path: string; name: string; data: any }) {
+export function loadScripture(msg: { id: string; path: string; name: string }) {
     const bibleFolder: string = getDataFolder(msg.path || "", dataFolderNames.scriptures)
     let filePath: string = path.join(bibleFolder, msg.name + ".fsb")
 
@@ -221,7 +253,20 @@ export function loadScripture(msg: { id: string; path: string; name: string; dat
     if (bible.error) filePath = path.join(app.getPath("documents"), "Bibles", msg.name + ".fsb")
     bible = loadFile(filePath, msg.id)
 
-    if (msg.data) return { ...bible, data: msg.data }
+    // convert "value" keys to correct "text" key, pre v1.3.0
+    if (bible.content?.[1]?.books?.[0]?.chapters?.[0]?.verses?.[0]?.value) {
+        bible.content[1].books.forEach((book: any) => {
+            book.chapters.forEach((chapter: any) => {
+                chapter.verses.forEach((verse: any) => {
+                    if (!verse.text) {
+                        verse.text = verse.value || ""
+                        delete verse.value
+                    }
+                })
+            })
+        })
+    }
+
     return bible
 }
 
@@ -232,6 +277,10 @@ export function loadShow(msg: { id: string; path: string | null; name: string })
     const show = loadFile(filePath, msg.id)
 
     return show
+}
+
+export function getMachineId() {
+    return machineIdSync() as string
 }
 
 function getVersion() {
@@ -316,7 +365,7 @@ export function saveRecording(_: Electron.IpcMainEvent, msg: any) {
     writeFile(filePath, buffer)
 
     if (!systemOpened) {
-        openSystemFolder(folder)
+        openInSystem(folder)
         systemOpened = true
     }
 }

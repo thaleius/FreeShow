@@ -1,17 +1,18 @@
 import { get } from "svelte/store"
 import { STAGE } from "../../types/Channels"
 import type { OutSlide } from "../../types/Show"
+import { runAction } from "../components/actions/actions"
 import { clone, keysToID } from "../components/helpers/array"
 import { getBase64Path } from "../components/helpers/media"
 import { getActiveOutputs } from "../components/helpers/output"
 import { getGroupName, getLayoutRef } from "../components/helpers/show"
 import { _show } from "../components/helpers/shows"
 import { getCustomStageLabel } from "../components/stage/stage"
-import { dictionary, events, groups, media, actions, outputs, previewBuffers, showsCache, stageShows, timeFormat, timers, variables } from "../stores"
+import { actions, events, groups, media, outputs, previewBuffers, showsCache, stageShows, timeFormat, timers, variables } from "../stores"
 import { connections } from "./../stores"
+import { translateText } from "./language"
 import { send } from "./request"
 import { arrayToObject, filterObjectArray, sendData, setConnectedState } from "./sendData"
-import { runAction } from "../components/actions/actions"
 
 // WIP loading different paths, might cause returned base64 to be different than it should if previous thumbnail finishes after
 export async function sendBackgroundToStage(outputId, updater = get(outputs), returnPath = false) {
@@ -29,7 +30,8 @@ export async function sendBackgroundToStage(outputId, updater = get(outputs), re
         return
     }
 
-    const base64path = await getBase64Path(path)
+    const stageConnections = Object.keys(get(connections).STAGE || {})?.length || 0
+    const base64path = stageConnections > 0 ? await getBase64Path(path) : ""
 
     const bg = clone({ path: base64path, filePath: path, mediaStyle: get(media)[path] || {}, next })
 
@@ -155,7 +157,7 @@ export const receiveSTAGE = {
 
             let group = slide.group || "—"
             if (slide.globalGroup && get(groups)[slide.globalGroup]) {
-                group = get(groups)[slide.globalGroup].default ? get(dictionary).groups?.[get(groups)[slide.globalGroup].name] : get(groups)[slide.globalGroup].name
+                group = get(groups)[slide.globalGroup].default ? translateText("groups." + get(groups)[slide.globalGroup].name) : get(groups)[slide.globalGroup].name
             }
 
             if (typeof group !== "string") group = ""
@@ -171,7 +173,6 @@ export const receiveSTAGE = {
     REQUEST_STREAM: (data: any) => {
         let id = data.outputId
         if (!id) id = getActiveOutputs(get(outputs), false, true, true)[0]
-        if (data.alpha && get(outputs)[id].keyOutput) id = get(outputs)[id].keyOutput
 
         if (!id) return
 

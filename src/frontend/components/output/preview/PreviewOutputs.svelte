@@ -1,26 +1,24 @@
 <script lang="ts">
+    import type { ClickEvent } from "../../../../types/Main"
     import type { Output } from "../../../../types/Output"
-    import { dictionary, ndiData, outputs, outputState } from "../../../stores"
+    import { ndiData, outputs, outputState } from "../../../stores"
     import { newToast } from "../../../utils/common"
     import { translateText } from "../../../utils/language"
     import { keysToID, sortByName, sortObject } from "../../helpers/array"
     import Icon from "../../helpers/Icon.svelte"
-    import { getActiveOutputs } from "../../helpers/output"
-    import Button from "../../inputs/Button.svelte"
-
-    export let currentOutputId: string | null
+    import MaterialButton from "../../inputs/MaterialButton.svelte"
 
     // onMount(() => {
     //     currentOutputId = getActiveOutputs({}, true, true)[0]
     // })
 
-    $: outs = sortObject(sortByName(keysToID($outputs).filter((a) => a.enabled && !a.isKeyOutput)), "stageOutput")
+    $: outs = sortObject(sortByName(keysToID($outputs).filter((a) => a.enabled)), "stageOutput")
 
-    function toggleOutput(e: any, id: string) {
+    function toggleOutput(e: ClickEvent, id: string) {
         if (outs.length <= 1) return
 
         outputs.update((a) => {
-            if (e.ctrlKey || e.metaKey) {
+            if (e.detail.ctrl) {
                 let newState = false
                 let getAllActive = Object.values(a).filter((a) => !a.stageOutput && a.active)
                 if ((getAllActive.length === 1 && a[id].active) || a[id].stageOutput) newState = true
@@ -35,14 +33,12 @@
                 let activeList = Object.values(a).filter((a) => !a.stageOutput && a.enabled && a.active === true)
                 if (!activeList.length) {
                     a[id].active = true
-                    newToast("$toast.one_output")
+                    newToast("toast.one_output")
                 }
             }
 
             return a
         })
-
-        currentOutputId = getActiveOutputs()[0]
     }
 
     // let allSameState = true
@@ -62,49 +58,48 @@
 </script>
 
 {#if outs.length > 1}
-    <div>
+    <div class="outputTitles">
         {#each outs as output}
-            <Button
-                title={$dictionary.actions?.toggle_output_lock}
-                on:click={(e) => toggleOutput(e, output.id)}
+            <MaterialButton
                 id={output.id}
+                title={output.stageOutput ? "" : "actions.toggle_output_lock"}
                 active={output.active}
-                style="flex: 1;{output.active ? 'border-bottom: 2px solid ' + output.color + ' !important;' : ''}"
+                style="width: 50%;font-weight: normal;border-radius: 0;padding: 0.2em 0.8em;{output.active ? 'border-bottom: 2px solid ' + output.color + ' !important;' : ''}"
                 class="output_button context #output_active_button"
-                bold={false}
-                center
-                dark
+                on:click={(e) => toggleOutput(e, output.id)}
             >
                 <div
                     class="indicator"
                     class:locked={!output.active}
                     class:invisible={output.invisible}
                     class:ndi={$ndiData[output?.id || ""]?.connections > 0}
-                    class:active={$outputState.find((a) => a.id === output.id)?.active}
+                    class:active={$outputState.find((a) => a.id === output.id)?.active === true}
                     data-title={translateText(getOutputStateTitle(output, { $outputState, $ndiData }))}
                 ></div>
-                {#if output.stageOutput}<Icon id="stage" size={0.8} right white />{/if}
-                <!-- {#if !allSameState && $outputState.find((a) => a.id === output.id)?.active}<Icon id="check" right />{/if} -->
+                {#if output.stageOutput}<Icon id="stage" size={0.8} white />{/if}
+                <!-- {#if !allSameState && $outputState.find((a) => a.id === output.id)?.active}<Icon id="check" />{/if} -->
 
                 <p style={output.active ? "" : "text-decoration: line-through;"}>{output.name}</p>
-            </Button>
+            </MaterialButton>
         {/each}
     </div>
 {/if}
 
 <style>
-    div {
+    .outputTitles {
         display: flex;
         flex-wrap: wrap;
         /* overflow-x: auto; */
+
+        background-color: var(--primary-darker);
     }
 
-    div :global(button) {
+    .outputTitles :global(button) {
         cursor: pointer;
         border-bottom: 2px solid var(--primary-lighter) !important;
         white-space: nowrap;
     }
-    div :global(button.active:hover) {
+    .outputTitles :global(button.active:hover) {
         filter: brightness(0.8);
     }
 
@@ -113,8 +108,6 @@
         width: 8px;
         height: 8px;
         border-radius: 50%;
-
-        margin-right: 10px;
 
         transition: 0.3s background-color ease;
         background-color: #ce3535;

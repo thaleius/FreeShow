@@ -2,7 +2,8 @@
 
 <script lang="ts">
     import { fade } from "svelte/transition"
-    import { dictionary, quickSearchActive, special, theme, themes } from "../../stores"
+    import { quickSearchActive, special, theme, themes } from "../../stores"
+    import { translateText } from "../../utils/language"
     import { formatSearch } from "../../utils/search"
     import { hexToRgb } from "../helpers/color"
     import Icon from "../helpers/Icon.svelte"
@@ -60,7 +61,7 @@
 {#if $quickSearchActive}
     <div class="quicksearch" transition:fade={{ duration: 50 }}>
         <div class="box" style="--background: rgb({rgb.r} {rgb.g} {rgb.b} / 0.9);" class:isOptimized>
-            <TextInput value={searchValue} placeholder="{$dictionary.main?.quick_search}..." style="padding: 8px 15px;font-size: 1.2em;min-width: 400px;" autofocus autoselect on:input={search} />
+            <TextInput value={searchValue} placeholder={translateText("main.quick_search...")} style="padding: 8px 15px;font-size: 1.2em;min-width: 400px;" autofocus autoselect on:input={search} />
 
             {#if searchValue}
                 {#if values.length}
@@ -100,7 +101,7 @@
 <style>
     .quicksearch {
         position: absolute;
-        inset-inline-start: 50%;
+        left: 50%;
         top: 50%;
         transform: translate(-50%, -50%);
         max-width: calc(100% - var(--navigation-width) * 2);
@@ -114,7 +115,6 @@
         gap: 10px;
 
         background-color: var(--primary);
-        /* border-radius: var(--border-radius); */
         border-radius: 10px;
         padding: 10px;
 

@@ -8,7 +8,7 @@ export const actionData = {
 
     // SHOWS
     name_select_show: { SECTION: "guide_title.show", name: "actions.name_select_show", icon: "showIcon", input: "strval" },
-    start_show: { slideId: "startShow", common: true, name: "preview._start", icon: "showIcon", input: "id" }, // any play actions are incompatible with clear actions...
+    start_show: { slideId: "startShow", common: true, name: "preview._start", icon: "showIcon", input: "start_show" }, // any play actions are incompatible with clear actions...
     set_template: { name: "actions.set_template_active", icon: "templates", input: "id" },
     transpose_show_up: { name: "edit.transpose_up", icon: "up" },
     transpose_show_down: { name: "edit.transpose_down", icon: "down" },
@@ -36,6 +36,7 @@ export const actionData = {
     // MEDIA
     start_camera: { SECTION: "tabs.media", common: true, name: "actions.start_camera", icon: "camera", input: "camera" },
     start_screen: { common: true, name: "actions.start_screen", icon: "screen", input: "screen" },
+    toggle_playing_media: { name: "actions.toggle_playing_media", icon: "image" },
 
     // OVERLAYS
     // SECTION: "tabs.overlays",
@@ -43,16 +44,16 @@ export const actionData = {
     id_select_overlay: { common: true, canAddMultiple: true, name: "actions.id_select_overlay", icon: "overlays", input: "id" },
 
     // OUTPUT
-    lock_output: { SECTION: "guide_title.output", name: "actions.toggle_output_lock", icon: "locked", input: "bolval" },
+    lock_output: { SECTION: "guide_title.output", canAddMultiple: true, name: "actions.toggle_output_lock", icon: "locked", input: "output_lock" },
     toggle_output_windows: { name: "actions.toggle_output_windows", icon: "outputs", incompatible: ["toggle_output"] },
     toggle_output: { canAddMultiple: true, name: "actions.toggle_output_window", icon: "outputs", input: "id", incompatible: ["toggle_output_windows"] },
     // id_select_output_style: { name: "actions.id_select_output_style", icon: "styles", input: "id" },
-    change_output_style: { slideId: "outputStyle", common: true, name: "actions.change_output_style", icon: "styles", input: "output_style" },
+    change_output_style: { slideId: "outputStyle", common: true, canAddMultiple: true, name: "actions.change_output_style", icon: "styles", input: "change_output_style" },
     change_transition: { name: "actions.change_transition", icon: "transition", input: "transition" },
 
     // STAGE
     // SECTION: "menu.stage",
-    change_stage_output_layout: { common: true, name: "actions.change_stage_output_layout", icon: "stage", input: "stage_output_layout" },
+    change_stage_output_layout: { common: true, canAddMultiple: true, name: "actions.change_stage_output_layout", icon: "stage", input: "stage_output_layout" },
     id_select_stage_layout: { name: "actions.id_change_stage_layout", icon: "stage", input: "id" },
 
     // AUDIO
@@ -74,6 +75,8 @@ export const actionData = {
     // FUNCTIONS
     change_variable: { SECTION: "tabs.functions", common: true, canAddMultiple: true, name: "actions.change_variable", icon: "variable", input: "variable" },
     start_trigger: { common: true, canAddMultiple: true, slideId: "trigger", name: "actions.start_trigger", icon: "trigger", input: "id" },
+
+    change_draw_zoom: { SECTION: "menu.draw", name: "actions.change_draw_zoom", icon: "zoom", input: "draw_zoom" },
 
     // EMIT
     // send_midi: { SECTION: "actions.emit_data", canAddMultiple: true, slideId: "sendMidi", name: "actions.send_midi", icon: "music", input: "midi" },
